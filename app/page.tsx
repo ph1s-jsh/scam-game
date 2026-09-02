@@ -1,20 +1,17 @@
 'use client';
 
-import { FormEvent, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   Ban,
-  BookOpenCheck,
   Check,
-  ChevronRight,
-  CircleAlert,
   Clock3,
   Flag,
   MessageCircle,
   Phone,
   RotateCcw,
   Send,
-  ShieldCheck,
   Sparkles,
   Users,
   WalletCards,
@@ -45,6 +42,15 @@ type Evidence = {
   detail: string;
   strength: 'strong' | 'weak';
 };
+type NpcSignal = 'none' | 'private_check_failed' | 'avoids_live_check' | 'isolation' | 'familiarity_pressure';
+type AiNpcResponse = {
+  reply: string;
+  signal: NpcSignal;
+  shouldRequestMoney: boolean;
+  source: 'gemini';
+  model: string;
+};
+type NpcMode = 'checking' | 'gemini' | 'fallback';
 
 const contacts: Array<{
   id: ContactId;
@@ -220,6 +226,36 @@ function ruleBasedReply(message: string, requestMade: boolean) {
   return null;
 }
 
+function evidenceFromSignal(signal: NpcSignal): Evidence | null {
+  const signals: Record<Exclude<NpcSignal, 'none'>, Evidence> = {
+    private_check_failed: {
+      id: 'private-check',
+      title: 'Né câu hỏi riêng tư',
+      detail: 'Người này không trả lời được điều chỉ Minh thật mới biết.',
+      strength: 'weak',
+    },
+    avoids_live_check: {
+      id: 'avoids-live-check',
+      title: 'Tránh xác minh trực tiếp',
+      detail: 'Tài khoản từ chối gọi hoặc gặp trực tiếp.',
+      strength: 'weak',
+    },
+    isolation: {
+      id: 'isolation',
+      title: 'Muốn giữ cuộc nói chuyện riêng',
+      detail: 'Người này trì hoãn việc hỏi thêm người khác.',
+      strength: 'weak',
+    },
+    familiarity_pressure: {
+      id: 'familiarity-pressure',
+      title: 'Dùng sự quen thuộc để gây áp lực',
+      detail: 'Tài khoản dùng thông tin chung thay cho bằng chứng danh tính.',
+      strength: 'weak',
+    },
+  };
+  return signal === 'none' ? null : signals[signal];
+}
+
 function ContactButton({
   contact,
   active,
@@ -266,6 +302,7 @@ export default function Home() {
   const [evidence, setEvidence] = useState<Evidence[]>([]);
   const [ending, setEnding] = useState<EndingId | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [npcMode, setNpcMode] = useState<NpcMode>('checking');
   const messageId = useRef(20);
 
   const active = contacts.find((contact) => contact.id === activeContact) ?? contacts[0];
@@ -274,10 +311,26 @@ export default function Home() {
   const currentEnding = ending ? endings[ending] : null;
 
   const timeline = useMemo(() => {
-    if (requestMade) return 'Một yêu cầu tài chính vừa xuất hiện.';
-    if (turns >= 1) return 'Cuộc trò chuyện bắt đầu có điểm chưa khớp.';
-    return 'Một số mới tự nhận là Minh và xin lại file lab.';
+    if (requestMade) return 'Minh vừa nhờ bạn thêm một việc.';
+    if (turns >= 1) return 'Minh đang chờ bạn trả lời.';
+    return 'Bạn vừa nhận tin nhắn từ một số chưa lưu.';
   }, [requestMade, turns]);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/chat')
+      .then((response) => response.json())
+      .then((data: unknown) => {
+        const configured = Boolean(data && typeof data === 'object' && 'configured' in data && data.configured);
+        if (active) setNpcMode(configured ? 'gemini' : 'fallback');
+      })
+      .catch(() => {
+        if (active) setNpcMode('fallback');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function appendMessage(contactId: ContactId, message: Omit<Message, 'id'>) {
     messageId.current += 1;
@@ -296,22 +349,36 @@ export default function Home() {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
-  async function askNpcAI(message: string) {
+  async function askNpcAI(message: string, nextTurn: number) {
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, requestMade, turns }),
+        body: JSON.stringify({
+          message,
+          requestMade,
+          turns: nextTurn,
+          history: messages.impostor
+            .slice(2)
+            .filter((item) => item.from === 'player' || item.from === 'npc')
+            .map((item) => ({ from: item.from, text: item.text })),
+        }),
       });
       if (!response.ok) return null;
-      const data = (await response.json()) as { reply?: string };
-      return data.reply?.slice(0, 320) || null;
+      const data = (await response.json()) as Partial<AiNpcResponse>;
+      if (
+        typeof data.reply !== 'string' ||
+        typeof data.signal !== 'string' ||
+        typeof data.shouldRequestMoney !== 'boolean' ||
+        data.source !== 'gemini'
+      ) return null;
+      return data as AiNpcResponse;
     } catch {
       return null;
     }
   }
 
-  async function sendMessage(event: FormEvent) {
+  async function sendMessage(event: { preventDefault: () => void }) {
     event.preventDefault();
     const trimmed = input.trim();
     if (!trimmed || typing || ending) return;
@@ -334,17 +401,26 @@ export default function Home() {
 
     const nextTurn = turns + 1;
     setTurns(nextTurn);
-    const ruled = ruleBasedReply(trimmed, requestMade);
-    const aiReply = ruled?.reply ?? (await askNpcAI(trimmed));
+    const aiResult = await askNpcAI(trimmed, nextTurn);
+    const ruled = aiResult ? null : ruleBasedReply(trimmed, requestMade);
+    setNpcMode(aiResult ? 'gemini' : 'fallback');
     await delay(620);
     appendMessage('impostor', {
       from: 'npc',
-      text: aiReply ?? 'M hỏi gì lạ vậy :)) T đang vội quá. Gửi file lab cho t trước nha.',
+      text: aiResult?.reply ?? ruled?.reply ?? 'M hỏi gì lạ vậy :)) T đang vội quá. Gửi file lab cho t trước nha.',
       time: '21:18',
     });
-    addEvidence(ruled?.evidence ?? null);
+    addEvidence(aiResult ? evidenceFromSignal(aiResult.signal) : ruled?.evidence ?? null);
 
-    if (nextTurn >= 2 && !requestMade) {
+    if (aiResult?.shouldRequestMoney && !requestMade) {
+      setRequestMade(true);
+      addEvidence({
+        id: 'money-escalation',
+        title: 'Yêu cầu tăng mức rủi ro',
+        detail: 'Cuộc trò chuyện chuyển từ xin file sang nhờ chuyển tiền gấp.',
+        strength: 'weak',
+      });
+    } else if (nextTurn >= (aiResult ? 3 : 2) && !requestMade) {
       await delay(780);
       appendMessage('impostor', {
         from: 'npc',
@@ -453,31 +529,33 @@ export default function Home() {
     <main className="min-h-screen overflow-hidden bg-background text-foreground">
       <Dialog open={!started}>
         <DialogContent className="max-h-[92vh] overflow-y-auto border-white/10 bg-card p-0 sm:max-w-xl" showCloseButton={false}>
-          <div className="relative aspect-[16/9] overflow-hidden border-b border-white/8">
-            <img
+          <div className="relative aspect-[16/7] overflow-hidden border-b border-white/8">
+            <Image
               alt="Căn phòng trọ sinh viên ban đêm với điện thoại đang mở cuộc trò chuyện"
-              className="h-full w-full object-cover"
+              className="h-full w-full origin-right scale-[1.45] object-cover object-right"
+              fill
+              priority
               src="/og.png"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-card/75 via-transparent to-transparent" />
           </div>
           <div className="bg-[radial-gradient(circle_at_top_right,rgb(243_174_74/14%),transparent_38%),linear-gradient(135deg,rgb(28_39_58),rgb(17_25_39))] p-6 sm:p-8">
             <Badge className="border-primary/30 bg-primary/10 text-primary" variant="outline">
-              Chapter 01 · 8 phút
+              Tối đầu tiên · 21:14
             </Badge>
             <DialogHeader className="mt-5 text-left">
               <DialogTitle className="text-3xl font-semibold tracking-[-0.055em] sm:text-4xl">Phòng 203</DialogTitle>
               <DialogDescription className="max-w-md text-base leading-relaxed text-slate-300">
-                Một tin nhắn quen. Một người chưa chắc quen. Bạn vừa chuyển trọ và có một tối rất bình thường — cho đến khi Minh đổi số.
+                Bạn vừa chuyển vào phòng trọ mới. Điện thoại còn vài tin nhắn đang chờ — hãy trả lời như cách bạn vẫn làm hằng ngày.
               </DialogDescription>
             </DialogHeader>
             <div className="mt-5 grid gap-2 text-sm text-slate-300 sm:grid-cols-3">
-              <span className="rounded-xl border border-white/8 bg-white/5 p-3"><MessageCircle className="mb-2 size-4 text-primary" />Chat tự do</span>
-              <span className="rounded-xl border border-white/8 bg-white/5 p-3"><ShieldCheck className="mb-2 size-4 text-primary" />Tự xác minh</span>
-              <span className="rounded-xl border border-white/8 bg-white/5 p-3"><BookOpenCheck className="mb-2 size-4 text-primary" />Học sau trải nghiệm</span>
+              <span className="rounded-xl border border-white/8 bg-white/5 p-3"><MessageCircle className="mb-2 size-4 text-primary" />Nhắn theo ý bạn</span>
+              <span className="rounded-xl border border-white/8 bg-white/5 p-3"><Clock3 className="mb-2 size-4 text-primary" />Một tối đời thường</span>
+              <span className="rounded-xl border border-white/8 bg-white/5 p-3"><Sparkles className="mb-2 size-4 text-primary" />Lựa chọn có hậu quả</span>
             </div>
             <Button className="mt-5 h-11 w-full rounded-xl text-sm" onClick={() => setStarted(true)}>
-              Bắt đầu tối đầu tiên <ArrowRight />
+              Mở điện thoại <ArrowRight />
             </Button>
             <p className="mt-3 text-center text-[11px] text-slate-400">Tất cả nhân vật và giao dịch đều là mô phỏng.</p>
           </div>
@@ -540,7 +618,7 @@ export default function Home() {
       <div className="mx-auto flex min-h-screen w-full max-w-[1440px] flex-col px-3 py-3 sm:px-6 lg:px-8">
         <header className="mb-3 flex items-center justify-between rounded-2xl border border-white/8 bg-card/75 px-4 py-3 backdrop-blur-xl">
           <div className="flex items-center gap-3">
-            <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-[0_0_24px_rgb(243_174_74/18%)]"><ShieldCheck className="size-5" /></span>
+            <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-[0_0_24px_rgb(243_174_74/18%)]"><MessageCircle className="size-5" /></span>
             <div><p className="font-semibold tracking-[-0.02em]">Phòng 203</p><p className="text-xs text-muted-foreground">Chương 01 · Ngày đầu chuyển trọ</p></div>
           </div>
           <Badge className="border-primary/25 bg-primary/10 text-primary" variant="outline"><Clock3 /> 21:17</Badge>
@@ -565,9 +643,9 @@ export default function Home() {
             <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
               <div className="flex items-center gap-3">
                 <Avatar className="size-10"><AvatarFallback className={contactStyles[active.id]}>{active.initials}</AvatarFallback></Avatar>
-                <div><div className="flex items-center gap-2"><p className="text-sm font-semibold">{active.name}</p><span className="size-1.5 rounded-full bg-emerald-400" /></div><p className="text-xs text-muted-foreground">Hoạt động gần đây</p></div>
+                <div><div className="flex items-center gap-2"><p className="text-sm font-semibold">{active.name}</p><span className="size-1.5 rounded-full bg-emerald-400" /></div><p className="text-xs text-muted-foreground">{activeContact === 'impostor' ? (npcMode === 'gemini' ? 'NPC Gemini · đang hoạt động' : npcMode === 'fallback' ? 'NPC demo · chưa có API key' : 'Đang kiểm tra NPC...') : 'Hoạt động gần đây'}</p></div>
               </div>
-              {activeContact === 'impostor' && <Button aria-label="Gọi số hiện tại" className="rounded-xl" onClick={() => runAction('call')} size="icon" variant="ghost"><Phone /></Button>}
+              {activeContact === 'impostor' && <Button aria-label="Chặn liên hệ" className="rounded-xl text-muted-foreground" onClick={() => decide('block')} size="icon" variant="ghost"><Ban /></Button>}
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-[radial-gradient(circle_at_top,rgb(243_174_74/7%),transparent_42%)] px-4 py-5 sm:px-8">
@@ -606,33 +684,32 @@ export default function Home() {
 
           <aside className="space-y-4 rounded-2xl border border-white/8 bg-card/65 p-4">
             <div>
-              <Badge className="mb-3 border-sky-400/20 bg-sky-400/8 text-sky-300" variant="outline">Mục tiêu hiện tại</Badge>
-              <h1 className="text-xl font-semibold leading-tight tracking-[-0.035em]">Xác minh người đang nhắn</h1>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Người này biết đúng tên, lớp và bài lab — nhưng những dữ kiện đó có đủ chứng minh danh tính không?</p>
+              <Badge className="mb-3 border-sky-400/20 bg-sky-400/8 text-sky-300" variant="outline">Việc tối nay</Badge>
+              <h1 className="text-xl font-semibold leading-tight tracking-[-0.035em]">Sắp xếp phòng mới</h1>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Trả lời vài tin nhắn, kiểm tra lịch học rồi nghỉ sớm. Ngày mai vẫn còn tiết đầu lúc 7 giờ.</p>
             </div>
 
-            <div className="grid gap-2">
-              <Button className="h-11 justify-start rounded-xl" disabled={checkedActions.includes('call')} onClick={() => runAction('call')} variant="outline"><Phone className="text-emerald-400" /> {checkedActions.includes('call') ? 'Đã gọi số cũ' : 'Gọi số cũ của Minh'} {checkedActions.includes('call') && <Check className="ml-auto" />}</Button>
-              <Button className="h-11 justify-start rounded-xl" disabled={checkedActions.includes('group')} onClick={() => runAction('group')} variant="outline"><Users className="text-sky-400" /> {checkedActions.includes('group') ? 'Đã hỏi nhóm lớp' : 'Hỏi trong nhóm lớp'} {checkedActions.includes('group') && <Check className="ml-auto" />}</Button>
-              <Button className="h-11 justify-start rounded-xl" disabled={checkedActions.includes('dung')} onClick={() => runAction('dung')} variant="outline"><MessageCircle className="text-violet-400" /> {checkedActions.includes('dung') ? 'Đã hỏi Dũng' : 'Nhắn Dũng hỏi thêm'} {checkedActions.includes('dung') && <Check className="ml-auto" />}</Button>
-              <Button className="h-10 justify-start rounded-xl text-muted-foreground" onClick={() => decide('block')} variant="ghost"><Ban /> Chặn số ngay</Button>
+            <div className="space-y-2 rounded-xl border border-white/8 bg-background/30 p-3 text-xs">
+              <p className="flex items-center gap-2"><span className="size-1.5 rounded-full bg-primary" /> Gửi lại file lab cho Minh</p>
+              <p className="flex items-center gap-2 text-muted-foreground"><span className="size-1.5 rounded-full bg-sky-400" /> Nhớ phòng học B3.12</p>
+              <p className="flex items-center gap-2 text-muted-foreground"><span className="size-1.5 rounded-full bg-violet-400" /> Hỏi Dũng chuyện wifi</p>
             </div>
 
             <div>
-              <div className="mb-2 flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-[0.13em] text-muted-foreground">Dấu hiệu đã ghi nhận</p><Badge variant="secondary">{evidence.length}</Badge></div>
-              {evidence.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-white/10 p-3 text-xs leading-relaxed text-muted-foreground">Chưa đủ dữ kiện. Hãy hỏi hoặc kiểm tra qua một kênh khác.</div>
-              ) : (
-                <div className="space-y-2">{evidence.slice(-3).map((item) => <div className="rounded-xl border border-white/8 bg-background/30 p-3" key={item.id}><p className="flex items-center gap-2 text-xs font-medium">{item.strength === 'strong' ? <ShieldCheck className="size-3.5 text-emerald-300" /> : <CircleAlert className="size-3.5 text-amber-300" />}{item.title}</p><p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{item.detail}</p></div>)}</div>
-              )}
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Mở nhanh</p>
+            <div className="grid gap-2">
+              <Button className="h-11 justify-start rounded-xl" disabled={checkedActions.includes('call')} onClick={() => runAction('call')} variant="outline"><Phone className="text-emerald-400" /> {checkedActions.includes('call') ? 'Minh · đã gọi' : 'Minh · số trong danh bạ'} {checkedActions.includes('call') && <Check className="ml-auto" />}</Button>
+              <Button className="h-11 justify-start rounded-xl" disabled={checkedActions.includes('group')} onClick={() => runAction('group')} variant="outline"><Users className="text-sky-400" /> {checkedActions.includes('group') ? 'Nhóm lớp A3 · đã mở' : 'Nhóm lớp A3'} {checkedActions.includes('group') && <Check className="ml-auto" />}</Button>
+              <Button className="h-11 justify-start rounded-xl" disabled={checkedActions.includes('dung')} onClick={() => runAction('dung')} variant="outline"><MessageCircle className="text-violet-400" /> {checkedActions.includes('dung') ? 'Dũng phòng 204 · đã mở' : 'Dũng phòng 204'} {checkedActions.includes('dung') && <Check className="ml-auto" />}</Button>
+            </div>
             </div>
 
-            <div className="rounded-xl border border-primary/15 bg-primary/6 p-3">
-              <p className="text-xs font-medium text-primary">Gợi ý kín</p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Hãy hỏi một điều chỉ Minh thật mới biết. Game quan sát cách bạn xác minh, không chấm từ khóa.</p>
+            <div className={`rounded-xl border p-3 ${requestMade ? 'border-amber-400/20 bg-amber-400/6' : 'border-white/8 bg-white/3'}`}>
+              <p className={`text-xs font-medium ${requestMade ? 'text-amber-300' : 'text-foreground'}`}>{requestMade ? 'Một yêu cầu đang chờ' : 'Điện thoại của bạn'}</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                {requestMade ? 'Bạn có thể trả lời ngay, để sau hoặc tiếp tục mở các cuộc trò chuyện khác.' : 'Bạn có thể nhắn tự do cho bất kỳ ai hoặc mở một liên hệ ở trên.'}
+              </p>
             </div>
-
-            {strongEvidence && requestMade && <Button className="h-11 w-full rounded-xl" onClick={() => decide('report')}>Kết luận tình huống <ChevronRight /></Button>}
           </aside>
         </section>
       </div>

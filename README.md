@@ -9,7 +9,7 @@ Phòng 203 là MVP game mô phỏng đời sống số giúp người trẻ luy�
 - Các hành động xác minh qua số cũ, nhóm lớp và người thứ ba.
 - Ba kết quả: xác minh an toàn, chuyển tiền mô phỏng và kết luận quá sớm.
 - Debrief theo bốn năng lực: xác minh danh tính, đánh giá bằng chứng, chống thúc ép và hiệu chỉnh niềm tin.
-- Hội thoại cốt lõi có lớp luật an toàn; câu hỏi mở có thể chuyển cho Gemini khi được cấu hình.
+- Gemini điều khiển lời thoại, ghi nhận tín hiệu hành vi và quyết định thời điểm chuyển giai đoạn; Game Engine giữ các mốc bắt buộc để chapter luôn hoàn thành được.
 
 ## Chạy cục bộ
 
@@ -25,11 +25,11 @@ Mở `http://localhost:3000`.
 
 ## Kết nối Gemini
 
-Điền `GEMINI_API_KEY` trong `.env.local`. API key chỉ được đọc tại route phía máy chủ và không được gửi xuống trình duyệt. Nếu chưa có key, game vẫn hoàn thành được bằng conversational fallback đã giới hạn theo World State.
+Điền `GEMINI_API_KEY` trong `.env.local`. API key chỉ được đọc tại route phía máy chủ và không được gửi xuống trình duyệt. Mỗi lượt gửi tối đa 10 tin nhắn gần nhất để NPC giữ ngữ cảnh; phản hồi Gemini dùng JSON Schema gồm lời thoại, tín hiệu hành vi và trạng thái chuyển giai đoạn. Nếu chưa có key hoặc API lỗi, game mới chuyển sang conversational fallback.
 
 ## Nguyên tắc an toàn
 
 - Tất cả nhân vật, số tiền và giao dịch là mô phỏng.
 - Không tạo link phishing, số tài khoản hoặc thông tin cá nhân thật.
 - NPC giả danh chỉ nhận tập dữ kiện được phép biết.
-- Model không quyết định kết quả; Game Engine ghi nhận hành động và chấm điểm.
+- Model điều khiển hội thoại nhưng không được tự thực hiện giao dịch; Game Engine ghi nhận hành động và chấm điểm.

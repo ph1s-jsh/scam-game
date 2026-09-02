@@ -16,20 +16,20 @@ export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.SITE_ORIGIN ?? 'https://phong-203-scam-game.nhau245310.chatgpt.site',
   ),
-  title: 'Phòng 203 — Game mô phỏng phòng chống lừa đảo',
+  title: 'Phòng 203 — Một tối ở khu trọ',
   description:
-    'Trò chơi hội thoại giúp người trẻ luyện kỹ năng xác minh danh tính trong đời sống số.',
+    'Trò chơi hội thoại nhập vai về những lựa chọn nhỏ trong một tối rất đời thường.',
   openGraph: {
     title: 'Phòng 203',
-    description: 'Một tin nhắn quen. Một người chưa chắc quen.',
-    images: [{ url: '/og.png', width: 1672, height: 941, alt: 'Phòng 203 — game mô phỏng chống lừa đảo' }],
+    description: 'Bạn vừa chuyển trọ. Điện thoại còn vài tin nhắn đang chờ.',
+    images: [{ url: '/og.png', width: 1672, height: 941, alt: 'Phòng 203 — một tối ở khu trọ' }],
     locale: 'vi_VN',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Phòng 203',
-    description: 'Một tin nhắn quen. Một người chưa chắc quen.',
+    description: 'Bạn vừa chuyển trọ. Điện thoại còn vài tin nhắn đang chờ.',
     images: ['/og.png'],
   },
 };
