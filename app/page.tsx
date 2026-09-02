@@ -27,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { generateFirebaseNpcReply } from '@/lib/firebase-ai';
 
 type ContactId = 'impostor' | 'dung' | 'group' | 'landlady';
 type EndingId = 'safe' | 'loss' | 'overcautious';
@@ -350,6 +351,27 @@ export default function Home() {
   }
 
   async function askNpcAI(message: string, nextTurn: number) {
+    const history = messages.impostor
+      .slice(2)
+      .filter((item): item is Message & { from: 'player' | 'npc' } => item.from === 'player' || item.from === 'npc')
+      .map((item) => ({ from: item.from, text: item.text }));
+
+    try {
+      const firebaseResult = await generateFirebaseNpcReply({
+        message,
+        requestMade,
+        turns: nextTurn,
+        history,
+      });
+      return {
+        ...firebaseResult,
+        source: 'gemini' as const,
+        model: 'gemini-3.5-flash-lite',
+      } satisfies AiNpcResponse;
+    } catch {
+      // Keep the server route as a second AI path while Firebase AI Logic is being configured.
+    }
+
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -358,10 +380,7 @@ export default function Home() {
           message,
           requestMade,
           turns: nextTurn,
-          history: messages.impostor
-            .slice(2)
-            .filter((item) => item.from === 'player' || item.from === 'npc')
-            .map((item) => ({ from: item.from, text: item.text })),
+          history,
         }),
       });
       if (!response.ok) return null;
