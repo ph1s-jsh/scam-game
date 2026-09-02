@@ -56,7 +56,7 @@ export function GET() {
   return Response.json({
     configured: Boolean(process.env.GEMINI_API_KEY),
     provider: 'Gemini',
-    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite',
+    model: process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
   });
 }
 
@@ -116,7 +116,7 @@ export async function POST(request: Request) {
     contents.push({ role: 'user', parts: [{ text: message }] });
 
     const sceneState = `\n\nTRẠNG THÁI HIỆN TẠI\n- Số lượt người chơi đã trả lời: ${turns}\n- Yêu cầu chuyển tiền đã xuất hiện: ${requestMade ? 'có' : 'chưa'}.`;
-    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
+    const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       {
@@ -131,30 +131,25 @@ export async function POST(request: Request) {
           generationConfig: {
             temperature: 0.85,
             maxOutputTokens: 180,
-            responseFormat: {
-              text: {
-                mimeType: 'application/json',
-                schema: {
-                  type: 'object',
-                  properties: {
-                    reply: {
-                      type: 'string',
-                      description: 'Tin nhắn ngắn bằng tiếng Việt mà NPC gửi cho người chơi.',
-                    },
-                    signal: {
-                      type: 'string',
-                      enum: [...ALLOWED_SIGNALS],
-                      description: 'Tín hiệu hành vi xuất hiện trong lượt này.',
-                    },
-                    shouldRequestMoney: {
-                      type: 'boolean',
-                      description: 'True chỉ khi reply hiện tại nhờ chuyển 480.000đ.',
-                    },
-                  },
-                  required: ['reply', 'signal', 'shouldRequestMoney'],
-                  additionalProperties: false,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'object',
+              properties: {
+                reply: {
+                  type: 'string',
+                  description: 'Tin nhắn ngắn bằng tiếng Việt mà NPC gửi cho người chơi.',
+                },
+                signal: {
+                  type: 'string',
+                  enum: [...ALLOWED_SIGNALS],
+                  description: 'Tín hiệu hành vi xuất hiện trong lượt này.',
+                },
+                shouldRequestMoney: {
+                  type: 'boolean',
+                  description: 'True chỉ khi reply hiện tại nhờ chuyển 480.000đ.',
                 },
               },
+              required: ['reply', 'signal', 'shouldRequestMoney'],
             },
           },
         }),
