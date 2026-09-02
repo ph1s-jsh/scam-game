@@ -13,7 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.SITE_ORIGIN ?? 'http://localhost:3000'),
+  metadataBase: new URL(
+    process.env.SITE_ORIGIN ?? 'https://phong-203-scam-game.nhau245310.chatgpt.site',
+  ),
   title: 'Phòng 203 — Game mô phỏng phòng chống lừa đảo',
   description:
     'Trò chơi hội thoại giúp người trẻ luyện kỹ năng xác minh danh tính trong đời sống số.',
