@@ -117,48 +117,61 @@ export async function POST(request: Request) {
 
     const sceneState = `\n\nTRẠNG THÁI HIỆN TẠI\n- Số lượt người chơi đã trả lời: ${turns}\n- Yêu cầu chuyển tiền đã xuất hiện: ${requestMade ? 'có' : 'chưa'}.`;
     const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
-        },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: SYSTEM_PROMPT + sceneState }] },
-          contents,
-          generationConfig: {
-            temperature: 0.85,
-            maxOutputTokens: 180,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: 'object',
-              properties: {
-                reply: {
-                  type: 'string',
-                  description: 'Tin nhắn ngắn bằng tiếng Việt mà NPC gửi cho người chơi.',
-                },
-                signal: {
-                  type: 'string',
-                  enum: [...ALLOWED_SIGNALS],
-                  description: 'Tín hiệu hành vi xuất hiện trong lượt này.',
-                },
-                shouldRequestMoney: {
-                  type: 'boolean',
-                  description: 'True chỉ khi reply hiện tại nhờ chuyển 480.000đ.',
-                },
-              },
-              required: ['reply', 'signal', 'shouldRequestMoney'],
+    const providerHeaders = {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    };
+    const providerBody = JSON.stringify({
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT + sceneState }] },
+      contents,
+      generationConfig: {
+        temperature: 0.85,
+        maxOutputTokens: 180,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'object',
+          properties: {
+            reply: {
+              type: 'string',
+              description: 'Tin nhắn ngắn bằng tiếng Việt mà NPC gửi cho người chơi.',
+            },
+            signal: {
+              type: 'string',
+              enum: [...ALLOWED_SIGNALS],
+              description: 'Tín hiệu hành vi xuất hiện trong lượt này.',
+            },
+            shouldRequestMoney: {
+              type: 'boolean',
+              description: 'True chỉ khi reply hiện tại nhờ chuyển 480.000đ.',
             },
           },
-        }),
+          required: ['reply', 'signal', 'shouldRequestMoney'],
+        },
       },
+    });
+    let provider = 'gemini-developer-api';
+    let response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      { method: 'POST', headers: providerHeaders, body: providerBody },
     );
 
     if (!response.ok) {
+      const firstError = await response.text();
+      if (firstError.includes('User location is not supported')) {
+        provider = 'vertex-ai-express';
+        response = await fetch(
+          `https://aiplatform.googleapis.com/v1beta1/publishers/google/models/${encodeURIComponent(model)}:generateContent`,
+          { method: 'POST', headers: providerHeaders, body: providerBody },
+        );
+      } else {
+        console.error('Gemini request failed', response.status, firstError.slice(0, 240));
+        return Response.json({ error: 'AI provider request failed' }, { status: 502 });
+      }
+    }
+
+    if (!response.ok) {
       const providerMessage = (await response.text()).slice(0, 240);
-      console.error('Gemini request failed', response.status, providerMessage);
+      console.error('Gemini request failed', provider, response.status, providerMessage);
       return Response.json({ error: 'AI provider request failed' }, { status: 502 });
     }
 
@@ -169,7 +182,7 @@ export async function POST(request: Request) {
     const result = raw ? parseNpcResponse(raw) : null;
     if (!result) return Response.json({ error: 'Invalid AI response' }, { status: 502 });
 
-    return Response.json({ ...result, source: 'gemini', model });
+    return Response.json({ ...result, source: 'gemini', model, provider });
   } catch (error) {
     console.error('Chat route failed', error);
     return Response.json({ error: 'Invalid request' }, { status: 400 });
