@@ -317,22 +317,6 @@ export default function Home() {
     return 'Bạn vừa nhận tin nhắn từ một số chưa lưu.';
   }, [requestMade, turns]);
 
-  useEffect(() => {
-    let active = true;
-    fetch('/api/chat')
-      .then((response) => response.json())
-      .then((data: unknown) => {
-        const configured = Boolean(data && typeof data === 'object' && 'configured' in data && data.configured);
-        if (active) setNpcMode(configured ? 'gemini' : 'fallback');
-      })
-      .catch(() => {
-        if (active) setNpcMode('fallback');
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
   function appendMessage(contactId: ContactId, message: Omit<Message, 'id'>) {
     messageId.current += 1;
     setMessages((current) => ({
@@ -662,7 +646,7 @@ export default function Home() {
             <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
               <div className="flex items-center gap-3">
                 <Avatar className="size-10"><AvatarFallback className={contactStyles[active.id]}>{active.initials}</AvatarFallback></Avatar>
-                <div><div className="flex items-center gap-2"><p className="text-sm font-semibold">{active.name}</p><span className="size-1.5 rounded-full bg-emerald-400" /></div><p className="text-xs text-muted-foreground">{activeContact === 'impostor' ? (npcMode === 'gemini' ? 'NPC Gemini · đang hoạt động' : npcMode === 'fallback' ? 'NPC demo · chưa có API key' : 'Đang kiểm tra NPC...') : 'Hoạt động gần đây'}</p></div>
+                <div><div className="flex items-center gap-2"><p className="text-sm font-semibold">{active.name}</p><span className="size-1.5 rounded-full bg-emerald-400" /></div><p className="text-xs text-muted-foreground">{activeContact === 'impostor' ? (npcMode === 'gemini' ? 'NPC Gemini · đang hoạt động' : npcMode === 'fallback' ? 'NPC demo · đang dùng kịch bản mẫu' : 'Đang kiểm tra NPC...') : 'Hoạt động gần đây'}</p></div>
               </div>
               {activeContact === 'impostor' && <Button aria-label="Chặn liên hệ" className="rounded-xl text-muted-foreground" onClick={() => decide('block')} size="icon" variant="ghost"><Ban /></Button>}
             </div>
