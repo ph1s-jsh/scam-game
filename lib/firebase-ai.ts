@@ -17,7 +17,7 @@ export type FirebaseNpcResult = {
 };
 
 const firebaseConfig = {
-  apiKey: 'AIzaSyB7bvJ_tyyq-A9RiyPk8CNSAkovQqW2byE',
+  apiKey: 'AIzaSyB7bvJ_tyyq-A9RiyPk8CNSAkov0qW2byE',
   authDomain: 'phong-203.firebaseapp.com',
   projectId: 'phong-203',
   storageBucket: 'phong-203.firebasestorage.app',
