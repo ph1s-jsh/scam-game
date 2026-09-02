@@ -39,12 +39,30 @@ let modelPromise: Promise<import('firebase/ai').GenerativeModel> | null = null;
 async function getNpcModel() {
   if (!modelPromise) {
     modelPromise = (async () => {
-      const [{ getApp, getApps, initializeApp }, { getAI, getGenerativeModel, GoogleAIBackend }] = await Promise.all([
+      const [
+        { getApp, getApps, initializeApp },
+        { getAI, getGenerativeModel, GoogleAIBackend },
+        { initializeAppCheck, ReCaptchaEnterpriseProvider },
+      ] = await Promise.all([
         import('firebase/app'),
         import('firebase/ai'),
+        import('firebase/app-check'),
       ]);
+      if (typeof window === 'undefined') throw new Error('Firebase AI Logic must run in a browser');
       const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-      const ai = getAI(app, { backend: new GoogleAIBackend() });
+      try {
+        initializeAppCheck(app, {
+          provider: new ReCaptchaEnterpriseProvider('6LePEqYtAAAAAMzs230Zgqd6n_QloajhMpWV1NU0'),
+          isTokenAutoRefreshEnabled: true,
+        });
+      } catch (error) {
+        // App Check can already be initialized after a hot reload; keep using that instance.
+        if (!(error instanceof Error && error.message.toLowerCase().includes('already initialized'))) throw error;
+      }
+      const ai = getAI(app, {
+        backend: new GoogleAIBackend(),
+        useLimitedUseAppCheckTokens: true,
+      });
       return getGenerativeModel(ai, {
         model: 'gemini-3.5-flash-lite',
         systemInstruction: (await import('./npc-prompt')).NPC_SYSTEM_PROMPT,
@@ -104,4 +122,3 @@ Trả về đúng JSON theo schema, không thêm markdown.`;
   const result = await model.generateContent(prompt);
   return parseResult(result.response.text());
 }
-
