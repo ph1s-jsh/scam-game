@@ -17,6 +17,7 @@ export type FirebaseNpcResult = {
 };
 
 const firebaseConfig = {
+  // Firebase web configuration
   apiKey: 'AIzaSyB7bvJ_tyyq-A9RiyPk8CNSAkov0qW2byE',
   authDomain: 'phong-203.firebaseapp.com',
   projectId: 'phong-203',
@@ -25,6 +26,9 @@ const firebaseConfig = {
   appId: '1:205328934239:web:ce53a11142bebbdbfa82ea',
   measurementId: 'G-MP112E9TTZ',
 };
+
+// Use the refreshed Firebase web key created for this project.
+firebaseConfig.apiKey = 'AIzaSyAlf2yLS_6JhgOa2YuQQqdEGMwYCn7q6jk';
 
 const allowedSignals = new Set<FirebaseNpcSignal>([
   'none',
