@@ -17,8 +17,9 @@ export type FirebaseNpcResult = {
 };
 
 const firebaseConfig = {
-  // Firebase web configuration
-  apiKey: 'AIzaSyB7bvJ_tyyq-A9RiyPk8CNSAkov0qW2byE',
+  // Public Firebase web configuration. Keep this key restricted to this site's
+  // referrers and to both Firebase AI Logic API and Firebase App Check API.
+  apiKey: 'AIzaSyB7vbJ_tyyq-A9RiyPk8CNSAkov0qW2byE',
   authDomain: 'phong-203.firebaseapp.com',
   projectId: 'phong-203',
   storageBucket: 'phong-203.firebasestorage.app',
@@ -26,9 +27,6 @@ const firebaseConfig = {
   appId: '1:205328934239:web:ce53a11142bebbdbfa82ea',
   measurementId: 'G-MP112E9TTZ',
 };
-
-// Use the refreshed Firebase web key created for this project.
-firebaseConfig.apiKey = 'AIzaSyAlf2yLS_6JhgOa2YuQQqdEGMwYCn7q6jk';
 
 const allowedSignals = new Set<FirebaseNpcSignal>([
   'none',
@@ -42,7 +40,7 @@ let modelPromise: Promise<import('firebase/ai').GenerativeModel> | null = null;
 
 async function getNpcModel() {
   if (!modelPromise) {
-    modelPromise = (async () => {
+    const pendingModel = (async () => {
       const [
         { getApp, getApps, initializeApp },
         { getAI, getGenerativeModel, GoogleAIBackend },
@@ -60,32 +58,44 @@ async function getNpcModel() {
           isTokenAutoRefreshEnabled: true,
         });
       } catch (error) {
-        // App Check can already be initialized after a hot reload; keep using that instance.
-        if (!(error instanceof Error && error.message.toLowerCase().includes('already initialized'))) throw error;
+        // A hot reload can retain an App Check instance initialized by the
+        // previous module. Only that exact Firebase condition is safe to reuse.
+        const code = typeof error === 'object' && error !== null && 'code' in error
+          ? String(error.code)
+          : '';
+        if (code !== 'appCheck/already-initialized') throw error;
       }
       const ai = getAI(app, {
         backend: new GoogleAIBackend(),
         useLimitedUseAppCheckTokens: true,
       });
-      return getGenerativeModel(ai, {
-        model: 'gemini-3.5-flash-lite',
-        systemInstruction: (await import('./npc-prompt')).NPC_SYSTEM_PROMPT,
-        generationConfig: {
-          temperature: 0.85,
-          maxOutputTokens: 180,
-          responseMimeType: 'application/json',
-          responseJsonSchema: {
-            type: 'object',
-            properties: {
-              reply: { type: 'string' },
-              signal: { type: 'string', enum: [...allowedSignals] },
-              shouldRequestMoney: { type: 'boolean' },
+      return getGenerativeModel(
+        ai,
+        {
+          model: 'gemini-3.5-flash-lite',
+          systemInstruction: (await import('./npc-prompt')).NPC_SYSTEM_PROMPT,
+          generationConfig: {
+            temperature: 0.85,
+            maxOutputTokens: 180,
+            responseMimeType: 'application/json',
+            responseJsonSchema: {
+              type: 'object',
+              properties: {
+                reply: { type: 'string' },
+                signal: { type: 'string', enum: [...allowedSignals] },
+                shouldRequestMoney: { type: 'boolean' },
+              },
+              required: ['reply', 'signal', 'shouldRequestMoney'],
             },
-            required: ['reply', 'signal', 'shouldRequestMoney'],
           },
         },
-      });
+        { timeout: 30000 },
+      );
     })();
+    modelPromise = pendingModel;
+    void pendingModel.catch(() => {
+      if (modelPromise === pendingModel) modelPromise = null;
+    });
   }
   return modelPromise;
 }

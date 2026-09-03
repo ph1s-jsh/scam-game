@@ -17,7 +17,6 @@ Yêu cầu Node.js 22.13 trở lên.
 
 ```bash
 npm install
-copy .env.example .env.local
 npm run dev
 ```
 
@@ -25,7 +24,7 @@ Mở `http://localhost:3000`.
 
 ## Kết nối Gemini
 
-Điền `GEMINI_API_KEY` trong `.env.local`. API key chỉ được đọc tại route phía máy chủ và không được gửi xuống trình duyệt. Mỗi lượt gửi tối đa 10 tin nhắn gần nhất để NPC giữ ngữ cảnh; phản hồi Gemini dùng JSON Schema gồm lời thoại, tín hiệu hành vi và trạng thái chuyển giai đoạn. Nếu chưa có key hoặc API lỗi, game mới chuyển sang conversational fallback.
+Game gọi Gemini Developer API qua Firebase AI Logic SDK trên trình duyệt; không dùng route máy chủ, Vertex AI hoặc `GEMINI_API_KEY`. Firebase web app cần được đăng ký với App Check bằng reCAPTCHA Enterprise. API key của web app phải giới hạn theo website và cho phép cả `Firebase AI Logic API` lẫn `Firebase App Check API`. Mỗi lượt gửi tối đa 10 tin nhắn gần nhất; phản hồi Gemini dùng JSON Schema gồm lời thoại, tín hiệu hành vi và trạng thái chuyển giai đoạn. Nếu AI chưa kết nối, game hiển thị rõ trạng thái rồi mới dùng kịch bản mẫu để chapter vẫn chơi được.
 
 ## Nguyên tắc an toàn
 

@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   Ban,
@@ -44,14 +44,22 @@ type Evidence = {
   strength: 'strong' | 'weak';
 };
 type NpcSignal = 'none' | 'private_check_failed' | 'avoids_live_check' | 'isolation' | 'familiarity_pressure';
-type AiNpcResponse = {
-  reply: string;
-  signal: NpcSignal;
-  shouldRequestMoney: boolean;
-  source: 'gemini';
-  model: string;
-};
-type NpcMode = 'checking' | 'gemini' | 'fallback';
+type NpcMode = 'idle' | 'checking' | 'gemini' | 'fallback';
+type NpcAiAttempt =
+  | { ok: true; result: { reply: string; signal: NpcSignal; shouldRequestMoney: boolean } }
+  | { ok: false };
+
+function logNpcAiFailure(error: unknown) {
+  const code = typeof error === 'object' && error !== null && 'code' in error
+    ? String(error.code)
+    : 'unknown';
+  const rawMessage = error instanceof Error ? error.message : String(error);
+  const message = rawMessage
+    .replace(/AIza[\w-]+/g, '[redacted]')
+    .replace(/key=[^&\s]+/g, 'key=[redacted]')
+    .slice(0, 240);
+  console.error(`[NPC AI] ${code}: ${message}`);
+}
 
 const contacts: Array<{
   id: ContactId;
@@ -303,13 +311,20 @@ export default function Home() {
   const [evidence, setEvidence] = useState<Evidence[]>([]);
   const [ending, setEnding] = useState<EndingId | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [npcMode, setNpcMode] = useState<NpcMode>('checking');
+  const [npcMode, setNpcMode] = useState<NpcMode>('idle');
   const messageId = useRef(20);
 
   const active = contacts.find((contact) => contact.id === activeContact) ?? contacts[0];
   const progress = Math.min(100, 18 + turns * 12 + evidence.length * 18 + (requestMade ? 16 : 0));
   const strongEvidence = evidence.some((item) => item.strength === 'strong');
   const currentEnding = ending ? endings[ending] : null;
+  const npcStatus = npcMode === 'gemini'
+    ? 'NPC Gemini · đang hoạt động'
+    : npcMode === 'fallback'
+      ? 'NPC demo · AI chưa kết nối'
+      : npcMode === 'checking'
+        ? 'NPC AI · đang kết nối...'
+        : 'NPC AI · sẽ kết nối khi bạn nhắn';
 
   const timeline = useMemo(() => {
     if (requestMade) return 'Minh vừa nhờ bạn thêm một việc.';
@@ -334,9 +349,8 @@ export default function Home() {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
-  async function askNpcAI(message: string, nextTurn: number) {
+  async function askNpcAI(message: string, nextTurn: number): Promise<NpcAiAttempt> {
     const history = messages.impostor
-      .slice(2)
       .filter((item): item is Message & { from: 'player' | 'npc' } => item.from === 'player' || item.from === 'npc')
       .map((item) => ({ from: item.from, text: item.text }));
 
@@ -347,14 +361,10 @@ export default function Home() {
         turns: nextTurn,
         history,
       });
-      return {
-        ...firebaseResult,
-        source: 'gemini' as const,
-        model: 'gemini-3.5-flash-lite',
-      } satisfies AiNpcResponse;
-    } catch {
-      // Do not fall back to the server Vertex route: it requires billing.
-      return null;
+      return { ok: true, result: firebaseResult };
+    } catch (error) {
+      logNpcAiFailure(error);
+      return { ok: false };
     }
   }
 
@@ -381,7 +391,9 @@ export default function Home() {
 
     const nextTurn = turns + 1;
     setTurns(nextTurn);
-    const aiResult = await askNpcAI(trimmed, nextTurn);
+    setNpcMode('checking');
+    const aiAttempt = await askNpcAI(trimmed, nextTurn);
+    const aiResult = aiAttempt.ok ? aiAttempt.result : null;
     const ruled = aiResult ? null : ruleBasedReply(trimmed, requestMade);
     setNpcMode(aiResult ? 'gemini' : 'fallback');
     await delay(620);
@@ -503,6 +515,7 @@ export default function Home() {
     setEvidence([]);
     setEnding(null);
     setNotice(null);
+    setNpcMode('idle');
   }
 
   return (
@@ -623,7 +636,13 @@ export default function Home() {
             <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
               <div className="flex items-center gap-3">
                 <Avatar className="size-10"><AvatarFallback className={contactStyles[active.id]}>{active.initials}</AvatarFallback></Avatar>
-                <div><div className="flex items-center gap-2"><p className="text-sm font-semibold">{active.name}</p><span className="size-1.5 rounded-full bg-emerald-400" /></div><p className="text-xs text-muted-foreground">{activeContact === 'impostor' ? (npcMode === 'gemini' ? 'NPC Gemini · đang hoạt động' : npcMode === 'fallback' ? 'NPC demo · đang dùng kịch bản mẫu' : 'Đang kiểm tra NPC...') : 'Hoạt động gần đây'}</p></div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold">{active.name}</p>
+                    <span className={`size-1.5 rounded-full ${activeContact !== 'impostor' || npcMode === 'gemini' ? 'bg-emerald-400' : npcMode === 'fallback' ? 'bg-slate-500' : 'bg-amber-400'}`} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{activeContact === 'impostor' ? npcStatus : 'Hoạt động gần đây'}</p>
+                </div>
               </div>
               {activeContact === 'impostor' && <Button aria-label="Chặn liên hệ" className="rounded-xl text-muted-foreground" onClick={() => decide('block')} size="icon" variant="ghost"><Ban /></Button>}
             </div>
@@ -654,6 +673,11 @@ export default function Home() {
             )}
 
             <form className="border-t border-white/8 bg-background/30 p-3" onSubmit={sendMessage}>
+              {activeContact === 'impostor' && npcMode === 'fallback' && (
+                <p aria-live="polite" className="mb-2 text-center text-[11px] text-amber-300/85">
+                  NPC AI chưa kết nối; lượt này đang dùng kịch bản mẫu.
+                </p>
+              )}
               <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-background/60 p-1.5 pl-4 focus-within:border-primary/45">
                 <input aria-label="Nhập tin nhắn" autoComplete="off" className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" disabled={Boolean(ending)} onChange={(event) => setInput(event.target.value)} placeholder={activeContact === 'impostor' ? 'Bạn muốn hỏi gì cũng được...' : `Nhắn ${active.name}...`} value={input} />
                 <Button aria-label="Gửi tin nhắn" className="size-9 rounded-xl" disabled={!input.trim() || typing} size="icon" type="submit"><Send /></Button>
