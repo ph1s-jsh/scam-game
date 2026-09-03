@@ -353,30 +353,7 @@ export default function Home() {
         model: 'gemini-3.5-flash-lite',
       } satisfies AiNpcResponse;
     } catch {
-      // Keep the server route as a second AI path while Firebase AI Logic is being configured.
-    }
-
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message,
-          requestMade,
-          turns: nextTurn,
-          history,
-        }),
-      });
-      if (!response.ok) return null;
-      const data = (await response.json()) as Partial<AiNpcResponse>;
-      if (
-        typeof data.reply !== 'string' ||
-        typeof data.signal !== 'string' ||
-        typeof data.shouldRequestMoney !== 'boolean' ||
-        data.source !== 'gemini'
-      ) return null;
-      return data as AiNpcResponse;
-    } catch {
+      // Do not fall back to the server Vertex route: it requires billing.
       return null;
     }
   }
