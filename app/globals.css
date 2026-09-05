@@ -55,8 +55,8 @@
   --card-foreground: oklch(0.965 0.009 85);
   --popover: oklch(0.195 0.027 254);
   --popover-foreground: oklch(0.965 0.009 85);
-  --primary: oklch(0.78 0.14 75);
-  --primary-foreground: oklch(0.18 0.026 254);
+  --primary: oklch(0.69 0.15 235);
+  --primary-foreground: oklch(0.985 0.005 240);
   --secondary: oklch(0.235 0.03 254);
   --secondary-foreground: oklch(0.94 0.01 85);
   --muted: oklch(0.23 0.023 254);
@@ -66,7 +66,7 @@
   --destructive: oklch(0.65 0.2 25);
   --border: oklch(0.32 0.026 254 / 70%);
   --input: oklch(0.31 0.028 254);
-  --ring: oklch(0.78 0.14 75);
+  --ring: oklch(0.73 0.14 210);
   --chart-1: oklch(0.78 0.14 75);
   --chart-2: oklch(0.72 0.13 190);
   --chart-3: oklch(0.68 0.15 250);
@@ -75,7 +75,7 @@
   --radius: 0.8rem;
   --sidebar: oklch(0.17 0.024 254);
   --sidebar-foreground: oklch(0.965 0.009 85);
-  --sidebar-primary: oklch(0.78 0.14 75);
+  --sidebar-primary: oklch(0.69 0.15 235);
   --sidebar-primary-foreground: oklch(0.18 0.026 254);
   --sidebar-accent: oklch(0.23 0.03 254);
   --sidebar-accent-foreground: oklch(0.965 0.009 85);
@@ -88,8 +88,8 @@
   --foreground: oklch(0.965 0.009 85);
   --card: oklch(0.185 0.026 254);
   --card-foreground: oklch(0.965 0.009 85);
-  --primary: oklch(0.78 0.14 75);
-  --primary-foreground: oklch(0.18 0.026 254);
+  --primary: oklch(0.69 0.15 235);
+  --primary-foreground: oklch(0.985 0.005 240);
   --secondary: oklch(0.235 0.03 254);
   --secondary-foreground: oklch(0.94 0.01 85);
   --muted: oklch(0.23 0.023 254);
@@ -99,7 +99,7 @@
   --destructive: oklch(0.65 0.2 25);
   --border: oklch(0.32 0.026 254 / 70%);
   --input: oklch(0.31 0.028 254);
-  --ring: oklch(0.78 0.14 75);
+  --ring: oklch(0.73 0.14 210);
 }
 
 @layer base {
@@ -112,14 +112,26 @@
   body {
     @apply bg-background text-foreground;
     background-image:
-      radial-gradient(circle at 10% 10%, rgb(65 103 140 / 12%), transparent 26%),
+      radial-gradient(
+        circle at 10% 10%,
+        rgb(65 103 140 / 12%),
+        transparent 26%
+      ),
       radial-gradient(circle at 90% 88%, rgb(243 174 74 / 7%), transparent 24%);
   }
 }
 
 @keyframes typing-bounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
-  30% { transform: translateY(-3px); opacity: 1; }
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
 }
 
 .typing-dot {

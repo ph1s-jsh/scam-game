@@ -14,15 +14,23 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(
-    process.env.SITE_ORIGIN ?? 'https://phong-203-scam-game.nhau245310.chatgpt.site',
+    process.env.SITE_ORIGIN ??
+      'https://phong-203-scam-game.nhau245310.chatgpt.site',
   ),
-  title: 'Phòng 203 — Một tối ở khu trọ',
+  title: 'Ba màn hình — Một nhà, ba góc nhìn',
   description:
-    'Trò chơi hội thoại nhập vai về những lựa chọn nhỏ trong một tối rất đời thường.',
+    'Trò chơi nhập vai trên điện thoại mô phỏng về những lựa chọn số trong đời sống thường ngày.',
   openGraph: {
     title: 'Phòng 203',
     description: 'Bạn vừa chuyển trọ. Điện thoại còn vài tin nhắn đang chờ.',
-    images: [{ url: '/og.png', width: 1672, height: 941, alt: 'Phòng 203 — một tối ở khu trọ' }],
+    images: [
+      {
+        url: '/og.png',
+        width: 1672,
+        height: 941,
+        alt: 'Phòng 203 — một tối ở khu trọ',
+      },
+    ],
     locale: 'vi_VN',
     type: 'website',
   },
