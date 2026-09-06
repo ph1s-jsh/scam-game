@@ -228,6 +228,13 @@ function containsAlias(message: string[], alias: string) {
   );
 }
 
+function stableAgentIndex(value: string, length: number) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1)
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  return length ? hash % length : 0;
+}
+
 function groupAgentsForThread(
   scenario: ScenarioDefinition,
   thread: ThreadDefinition,
@@ -259,7 +266,7 @@ export function selectNpcAgent(
     return (
       groupAgents.find((agent) =>
         agent.aliases.some((alias) => containsAlias(messageWords, alias)),
-      ) ?? groupAgents[0]
+      ) ?? groupAgents[stableAgentIndex(latestMessage, groupAgents.length)]
     );
   }
 

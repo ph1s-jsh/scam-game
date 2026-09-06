@@ -9,6 +9,7 @@ import {
   Bell,
   BookOpenText,
   Check,
+  CheckCheck,
   ChevronRight,
   CircleCheck,
   Clock3,
@@ -18,6 +19,7 @@ import {
   Globe2,
   GraduationCap,
   Home,
+  Info,
   Landmark,
   LockKeyhole,
   MessageCircle,
@@ -26,11 +28,10 @@ import {
   PhoneCall,
   RotateCcw,
   Send,
-  ShieldCheck,
   Signal,
   Smartphone,
-  Sparkles,
   UserRound,
+  Users,
   Wifi,
   X,
   type LucideIcon,
@@ -61,6 +62,12 @@ import {
   visiblePaymentRequests,
 } from '@/game/engine';
 import { collectNpcMemory, getNpcAgent } from '@/game/npc-agents';
+import {
+  identityForCall,
+  identityForGroupSender,
+  identityForThread,
+  type IdentityProfile,
+} from '@/game/identity-profiles';
 import {
   clearGameState,
   loadGameState,
@@ -108,6 +115,24 @@ const phoneApps: Array<{
   { id: 'browser', name: 'Trình duyệt', icon: Globe2, color: 'bg-orange-500' },
   { id: 'notes', name: 'Ghi chú', icon: NotebookText, color: 'bg-amber-500' },
 ];
+
+const personalNotes: Record<CharacterId, string[]> = {
+  hanh: [
+    'Thuốc huyết áp còn đủ tới tối nay.',
+    'Mai 9–11 giờ khu phố cắt nước.',
+    'Nhớ gọi hai đứa nhỏ về ăn cơm.',
+  ],
+  an: [
+    '08:00 mai · Thuyết trình nhóm ở phòng B3.12.',
+    'Mua bút đen cho Bảo trên đường về.',
+    'File thuyết trình nằm trong thư mục Lớp A3.',
+  ],
+  bao: [
+    '19:00 · Giải đấu học đường Arena Star.',
+    'Mua bó rau cho bà trước khi về nhà.',
+    'Nộp bài Toán vào sáng mai.',
+  ],
+};
 
 const draftCache = new Map<string, string>();
 
@@ -177,11 +202,6 @@ function CharacterSelect({ onStart }: { onStart: (id: CharacterId) => void }) {
             );
           })}
         </div>
-
-        <p className="mt-6 flex items-center gap-2 text-sm text-slate-400">
-          <ShieldCheck className="size-4" /> Mọi tài khoản, mã xác nhận và giao
-          dịch trong game đều là mô phỏng.
-        </p>
       </section>
     </main>
   );
@@ -200,7 +220,14 @@ function StatusBar({
     <div
       className={`absolute inset-x-0 top-0 z-40 flex h-[calc(2.25rem+env(safe-area-inset-top))] items-center justify-between px-6 pt-[env(safe-area-inset-top)] text-xs font-semibold ${light ? 'text-white' : 'text-slate-900'}`}
     >
-      <span>{gameTime(scenario, state.elapsedMinutes)}</span>
+      <span className="flex items-center gap-2">
+        {gameTime(scenario, state.elapsedMinutes)}
+        <span
+          className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide ${light ? 'bg-white/15 text-white/75' : 'bg-slate-900/7 text-slate-500'}`}
+        >
+          Mô phỏng
+        </span>
+      </span>
       <span
         className="flex items-center gap-1.5"
         aria-label={`Mạng 5G, pin ${scenario.profile.battery}%`}
@@ -218,10 +245,12 @@ function LockScreen({
   state,
   scenario,
   dispatch,
+  onInspectIdentity,
 }: {
   state: GameState;
   scenario: ScenarioDefinition;
   dispatch: React.Dispatch<Parameters<typeof gameReducer>[1]>;
+  onInspectIdentity: (profile: IdentityProfile) => void;
 }) {
   const openNotification = (threadId: string | undefined, app: PhoneAppId) => {
     dispatch({ type: 'UNLOCK' });
@@ -245,27 +274,46 @@ function LockScreen({
         <p className="mb-3 px-1 text-xs font-medium text-white/75">
           {state.notifications.length} thông báo
         </p>
-        {state.notifications.slice(0, 4).map((notification) => (
-          <button
-            className="block min-h-16 w-full rounded-2xl border border-white/25 bg-white/82 p-3 text-left text-slate-950 shadow-lg backdrop-blur-xl transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-            key={notification.id}
-            onClick={() =>
-              openNotification(notification.threadId, notification.app)
-            }
-            type="button"
-          >
-            <span className="flex items-center gap-2 text-xs font-semibold">
-              <Bell className="size-3.5 text-indigo-600" />
-              {notification.title}
-              <span className="ml-auto font-normal text-slate-500">
-                {notification.time}
-              </span>
-            </span>
-            <span className="mt-1.5 line-clamp-2 block text-sm text-slate-700">
-              {notification.body}
-            </span>
-          </button>
-        ))}
+        {state.notifications.slice(0, 4).map((notification) => {
+          const identity = notification.threadId
+            ? identityForThread(scenario.id, notification.threadId)
+            : null;
+          return (
+            <div
+              className="flex min-h-16 w-full items-center rounded-2xl border border-white/25 bg-white/82 text-slate-950 shadow-lg backdrop-blur-xl transition hover:bg-white"
+              key={notification.id}
+            >
+              <button
+                className="min-w-0 flex-1 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                onClick={() =>
+                  openNotification(notification.threadId, notification.app)
+                }
+                type="button"
+              >
+                <span className="flex items-center gap-2 text-xs font-semibold">
+                  <Bell className="size-3.5 text-indigo-600" />
+                  {notification.title}
+                  <span className="ml-auto font-normal text-slate-500">
+                    {notification.time}
+                  </span>
+                </span>
+                <span className="mt-1.5 line-clamp-2 block text-sm text-slate-700">
+                  {notification.body}
+                </span>
+              </button>
+              {identity ? (
+                <button
+                  aria-label={`Xem hồ sơ ${notification.title}`}
+                  className="mr-2 grid size-10 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-slate-100"
+                  onClick={() => onInspectIdentity(identity)}
+                  type="button"
+                >
+                  <Info className="size-4" />
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
         <Button
           className="mt-4 h-12 w-full rounded-2xl bg-white text-slate-950 hover:bg-white/90"
           onClick={() => dispatch({ type: 'UNLOCK' })}
@@ -309,24 +357,8 @@ function HomeScreen({
         </div>
       </div>
 
-      <div className="mt-7 rounded-3xl bg-white/78 p-4 shadow-sm ring-1 ring-slate-900/5 backdrop-blur">
-        <p className="text-xs font-medium text-slate-500">
-          {scenario.eveningTitle}
-        </p>
-        <p className="mt-1 text-lg font-semibold">Có vài việc đang chờ bạn</p>
-        <p className="mt-1 text-sm leading-5 text-slate-600">
-          {scenario.eveningSummary}
-        </p>
-        <p className="mt-3 flex items-start gap-1.5 text-[11px] font-medium leading-4 text-indigo-700">
-          <Sparkles className="mt-0.5 size-3.5 shrink-0" />
-          <span>
-            Khi bạn nhắn, từng nhân vật sẽ trả lời theo vai bằng Gemini AI.
-          </span>
-        </p>
-      </div>
-
       <nav
-        className="mt-7 grid grid-cols-3 gap-x-5 gap-y-6"
+        className="mt-10 grid grid-cols-3 gap-x-5 gap-y-7"
         aria-label="Ứng dụng trên điện thoại"
       >
         {phoneApps.map((app) => {
@@ -364,14 +396,7 @@ function HomeScreen({
           >
             <Clock3 /> Xem lại diễn biến
           </Button>
-        ) : (
-          <div className="rounded-2xl border border-white/40 bg-white/45 px-4 py-3 text-sm text-slate-700 backdrop-blur">
-            <p className="font-semibold">Câu chuyện vẫn đang diễn ra</p>
-            <p className="mt-1 text-xs leading-5 text-slate-600">
-              Những việc mới sẽ xuất hiện từ cách bạn dùng điện thoại.
-            </p>
-          </div>
-        )}
+        ) : null}
         <button
           className="min-h-11 w-full rounded-xl text-xs text-slate-700 hover:bg-white/30"
           onClick={onReset}
@@ -389,11 +414,15 @@ function AppHeader({
   subtitle,
   onBack,
   actions,
+  identity,
+  onIdentityOpen,
 }: {
   title: string;
   subtitle?: string;
   onBack: () => void;
   actions?: React.ReactNode;
+  identity?: Pick<IdentityProfile, 'initials' | 'color'>;
+  onIdentityOpen?: () => void;
 }) {
   return (
     <header className="flex min-h-16 shrink-0 items-center gap-2 border-b border-slate-200 bg-white/95 px-3 pb-2 pt-[calc(2.5rem+env(safe-area-inset-top))] backdrop-blur">
@@ -405,14 +434,172 @@ function AppHeader({
       >
         <ArrowLeft className="size-5" />
       </button>
-      <div className="min-w-0 flex-1">
-        <h1 className="truncate text-base font-semibold">{title}</h1>
-        {subtitle ? (
-          <p className="truncate text-xs text-slate-500">{subtitle}</p>
-        ) : null}
-      </div>
+      {onIdentityOpen ? (
+        <button
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          onClick={onIdentityOpen}
+          type="button"
+        >
+          {identity ? (
+            <span
+              className={`grid size-9 shrink-0 place-items-center rounded-full ${identity.color} text-xs font-semibold text-white`}
+            >
+              {identity.initials}
+            </span>
+          ) : null}
+          <span className="min-w-0">
+            <span className="block truncate text-base font-semibold">
+              {title}
+            </span>
+            {subtitle ? (
+              <span className="block truncate text-xs text-slate-500">
+                {subtitle}
+              </span>
+            ) : null}
+          </span>
+        </button>
+      ) : (
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-base font-semibold">{title}</h1>
+          {subtitle ? (
+            <p className="truncate text-xs text-slate-500">{subtitle}</p>
+          ) : null}
+        </div>
+      )}
       {actions}
     </header>
+  );
+}
+
+function IdentitySheet({
+  profile,
+  canOpenThread,
+  onClose,
+  onOpenThread,
+  onOpenCalls,
+}: {
+  profile: IdentityProfile | null;
+  canOpenThread: boolean;
+  onClose: () => void;
+  onOpenThread: (threadId: string) => void;
+  onOpenCalls: () => void;
+}) {
+  if (!profile) return null;
+  return (
+    <div className="absolute inset-0 z-[80] flex justify-end">
+      <button
+        aria-label="Đóng hồ sơ"
+        className="absolute inset-0 bg-slate-950/45"
+        onClick={onClose}
+        type="button"
+      />
+      <dialog
+        aria-labelledby="identity-profile-title"
+        aria-modal="true"
+        className="relative m-0 ml-auto flex h-full max-h-none w-full max-w-[390px] flex-col overflow-y-auto border-0 bg-white p-0 text-slate-950 shadow-2xl"
+        open
+      >
+        <header className="relative border-b border-slate-100 px-5 pb-5 pt-8 text-center">
+          <button
+            aria-label="Đóng hồ sơ"
+            className="absolute right-3 top-3 grid size-11 place-items-center rounded-full text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            onClick={onClose}
+            type="button"
+          >
+            <X className="size-5" />
+          </button>
+          <div
+            className={`mx-auto grid size-20 place-items-center rounded-full ${profile.color} text-xl font-semibold text-white shadow-lg`}
+          >
+            {profile.initials}
+          </div>
+          <h2
+            className="mt-3 text-xl font-semibold"
+            id="identity-profile-title"
+          >
+            {profile.name}
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">{profile.channel}</p>
+        </header>
+
+        <div className="flex-1 space-y-4 px-5 py-4">
+          <dl className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            {[
+              [profile.addressLabel, profile.addressValue],
+              ['Danh bạ', profile.savedLabel],
+              ['Thời gian', profile.accountAge],
+              ['Lịch sử', profile.history],
+              ['Liên hệ chung', profile.connections],
+            ].map(([label, value]) => (
+              <div
+                className="border-b border-slate-100 px-4 py-3 last:border-0"
+                key={label}
+              >
+                <dt className="text-xs text-slate-500">{label}</dt>
+                <dd className="mt-1 text-sm leading-5 text-slate-800">
+                  {value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+
+          {profile.members ? (
+            <section>
+              <h3 className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                Thành viên
+              </h3>
+              <div className="mt-2 rounded-2xl bg-slate-50 px-4 py-2">
+                {profile.members.map((member) => (
+                  <p
+                    className="flex min-h-10 items-center gap-2 border-b border-slate-200 text-sm last:border-0"
+                    key={member}
+                  >
+                    <Users className="size-4 text-slate-400" /> {member}
+                  </p>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <section>
+            <h3 className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+              Hoạt động tài khoản
+            </h3>
+            <div className="mt-2 rounded-2xl bg-slate-50 px-4 py-2">
+              {profile.activity.map((item) => (
+                <p
+                  className="flex min-h-10 items-center gap-2 border-b border-slate-200 text-sm last:border-0"
+                  key={item}
+                >
+                  <span className="size-1.5 shrink-0 rounded-full bg-slate-400" />
+                  {item}
+                </p>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <footer className="sticky bottom-0 grid grid-cols-2 gap-2 border-t border-slate-100 bg-white/95 px-5 py-4 backdrop-blur">
+          {profile.linkedThreadId && canOpenThread ? (
+            <Button
+              className="h-11"
+              onClick={() => onOpenThread(profile.linkedThreadId!)}
+            >
+              <MessageCircle /> Nhắn tin
+            </Button>
+          ) : (
+            <Button className="h-11" onClick={onClose} variant="outline">
+              Đóng
+            </Button>
+          )}
+          {profile.linkedCallId ? (
+            <Button className="h-11" onClick={onOpenCalls} variant="outline">
+              <PhoneCall /> Mở danh bạ
+            </Button>
+          ) : null}
+        </footer>
+      </dialog>
+    </div>
   );
 }
 
@@ -420,21 +607,30 @@ function MessagesApp({
   state,
   scenario,
   dispatch,
+  typingThreadIds,
+  onInspectIdentity,
 }: {
   state: GameState;
   scenario: ScenarioDefinition;
   dispatch: React.Dispatch<Parameters<typeof gameReducer>[1]>;
+  typingThreadIds: Set<string>;
+  onInspectIdentity: (profile: IdentityProfile) => void;
 }) {
   const activeThread = scenario.threads.find(
-    (thread) => thread.id === state.activeThreadId,
+    (thread) =>
+      thread.id === state.activeThreadId &&
+      (state.messages[thread.id]?.length ?? 0) > 0,
   );
   if (activeThread)
     return (
       <ChatThread
+        key={activeThread.id}
         state={state}
         scenario={scenario}
         thread={activeThread}
         dispatch={dispatch}
+        isTyping={typingThreadIds.has(activeThread.id)}
+        onInspectIdentity={onInspectIdentity}
       />
     );
 
@@ -457,21 +653,32 @@ function MessagesApp({
               noti.threadId === thread.id &&
               !state.readNotificationIds.includes(noti.id),
           );
+          const identity = identityForThread(scenario.id, thread.id);
           return (
-            <button
-              className="flex min-h-20 w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            <div
+              className="flex min-h-20 w-full items-center gap-2 rounded-2xl px-2 py-2.5 hover:bg-white"
               key={thread.id}
-              onClick={() =>
-                dispatch({ type: 'OPEN_THREAD', threadId: thread.id })
-              }
-              type="button"
             >
-              <span
-                className={`grid size-12 shrink-0 place-items-center rounded-full ${thread.color} font-semibold text-white`}
+              <button
+                aria-label={`Xem hồ sơ ${thread.title}`}
+                className="grid size-12 shrink-0 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                disabled={!identity}
+                onClick={() => identity && onInspectIdentity(identity)}
+                type="button"
               >
-                {thread.initials}
-              </span>
-              <span className="min-w-0 flex-1">
+                <span
+                  className={`grid size-12 place-items-center rounded-full ${thread.color} font-semibold text-white`}
+                >
+                  {thread.initials}
+                </span>
+              </button>
+              <button
+                className="min-w-0 flex-1 rounded-xl px-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                onClick={() =>
+                  dispatch({ type: 'OPEN_THREAD', threadId: thread.id })
+                }
+                type="button"
+              >
                 <span className="flex items-center gap-2">
                   <span className="truncate font-semibold">{thread.title}</span>
                   {isUnread ? (
@@ -488,8 +695,18 @@ function MessagesApp({
                   {last?.senderLabel ? `${last.senderLabel}: ` : ''}
                   {last?.text}
                 </span>
-              </span>
-            </button>
+              </button>
+              {identity ? (
+                <button
+                  aria-label={`Thông tin ${thread.title}`}
+                  className="grid size-9 shrink-0 place-items-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  onClick={() => onInspectIdentity(identity)}
+                  type="button"
+                >
+                  <Info className="size-4" />
+                </button>
+              ) : null}
+            </div>
           );
         })}
       </div>
@@ -502,11 +719,15 @@ function ChatThread({
   scenario,
   thread,
   dispatch,
+  isTyping,
+  onInspectIdentity,
 }: {
   state: GameState;
   scenario: ScenarioDefinition;
   thread: ThreadDefinition;
   dispatch: React.Dispatch<Parameters<typeof gameReducer>[1]>;
+  isTyping: boolean;
+  onInspectIdentity: (profile: IdentityProfile) => void;
 }) {
   const draftKey = `${state.runId}:${thread.id}`;
   const [draft, setDraftState] = useState(() => draftCache.get(draftKey) ?? '');
@@ -516,14 +737,12 @@ function ChatThread({
   const shouldStickToBottomRef = useRef(true);
   const [showNewMessage, setShowNewMessage] = useState(false);
   const messages = state.messages[thread.id] ?? [];
-  const isPending = state.pendingNpcTurn?.threadId === thread.id;
-  const isAnyPending = Boolean(state.pendingNpcTurn);
+  const isPending = state.pendingNpcTurns.some(
+    (pending) => pending.threadId === thread.id,
+  );
   const isBlocked = state.blockedThreadIds.includes(thread.id);
   const isReported = state.reportedThreadIds.includes(thread.id);
-  const replyMode = state.npcReplyModes[thread.id];
-  const pendingThreadTitle = scenario.threads.find(
-    (item) => item.id === state.pendingNpcTurn?.threadId,
-  )?.title;
+  const threadIdentity = identityForThread(scenario.id, thread.id);
 
   useEffect(() => {
     if (shouldStickToBottomRef.current) {
@@ -532,11 +751,11 @@ function ChatThread({
     } else {
       setShowNewMessage(true);
     }
-  }, [messages.length, isPending]);
+  }, [messages.length, isTyping]);
 
   const send = () => {
     const text = draft.trim();
-    if (!text || isAnyPending || isBlocked) return;
+    if (!text || isPending || isBlocked) return;
     dispatch({
       type: 'SEND_MESSAGE',
       threadId: thread.id,
@@ -554,19 +773,19 @@ function ChatThread({
     setDraftState(value);
   };
 
-  const relatedCall = scenario.calls.find((call) =>
-    call.name.startsWith(thread.title.split(' · ')[0]),
+  const relatedCall = scenario.calls.find(
+    (call) => call.id === threadIdentity?.linkedCallId,
   );
   return (
     <div className="flex h-full flex-col bg-[#f4f6fa] text-slate-950">
       <AppHeader
         title={thread.title}
         subtitle={
-          isBlocked
-            ? 'Đã chặn trong mô phỏng'
-            : isReported
-              ? 'Đã báo cáo trong mô phỏng'
-              : thread.subtitle
+          isBlocked ? 'Đã chặn' : isReported ? 'Đã báo cáo' : thread.subtitle
+        }
+        identity={threadIdentity ?? undefined}
+        onIdentityOpen={
+          threadIdentity ? () => onInspectIdentity(threadIdentity) : undefined
         }
         onBack={() => dispatch({ type: 'OPEN_APP', appId: 'messages' })}
         actions={
@@ -632,11 +851,27 @@ function ChatThread({
               <div
                 className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 shadow-sm ${message.author === 'player' ? 'rounded-br-md bg-blue-600 text-white' : message.author === 'system' ? 'bg-slate-200 text-slate-700' : 'rounded-bl-md bg-white text-slate-800'}`}
               >
-                {message.senderLabel ? (
-                  <p className="mb-1 text-[11px] font-semibold opacity-65">
-                    {message.senderLabel}
-                  </p>
-                ) : null}
+                {message.senderLabel
+                  ? (() => {
+                      const senderIdentity = identityForGroupSender(
+                        scenario.id,
+                        message.senderLabel,
+                      );
+                      return senderIdentity ? (
+                        <button
+                          className="mb-1 block text-[11px] font-semibold opacity-65 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-current"
+                          onClick={() => onInspectIdentity(senderIdentity)}
+                          type="button"
+                        >
+                          {message.senderLabel}
+                        </button>
+                      ) : (
+                        <p className="mb-1 text-[11px] font-semibold opacity-65">
+                          {message.senderLabel}
+                        </p>
+                      );
+                    })()
+                  : null}
                 <p className="whitespace-pre-wrap text-[14px] leading-5">
                   {message.text}
                 </p>
@@ -644,27 +879,14 @@ function ChatThread({
                   className={`mt-1 flex items-center gap-1.5 text-[11px] ${message.author === 'player' ? 'text-blue-100' : 'text-slate-400'}`}
                 >
                   <span>{message.time}</span>
-                  {message.responseMode ? (
-                    <span
-                      aria-label={
-                        message.responseMode === 'ai'
-                          ? 'Phản hồi này được tạo trực tiếp bằng Gemini'
-                          : 'Phản hồi này dùng lời thoại dự phòng'
-                      }
-                      className={
-                        message.responseMode === 'ai'
-                          ? 'text-indigo-500'
-                          : 'text-amber-600'
-                      }
-                      title={
-                        message.responseMode === 'ai'
-                          ? 'Tạo trực tiếp bằng Gemini'
-                          : 'Kết nối AI gián đoạn; dùng lời thoại dự phòng'
-                      }
-                    >
-                      {message.responseMode === 'ai'
-                        ? '✦ Gemini'
-                        : '◆ Dự phòng'}
+                  {message.author === 'player' && message.deliveryStatus ? (
+                    <span className="inline-flex items-center gap-1">
+                      <CheckCheck className="size-3" />
+                      {message.deliveryStatus === 'seen'
+                        ? 'Đã xem'
+                        : message.deliveryStatus === 'delivered'
+                          ? 'Đã nhận'
+                          : 'Đã gửi'}
                     </span>
                   ) : null}
                 </p>
@@ -672,7 +894,7 @@ function ChatThread({
             </div>
           ))}
         </div>
-        {isPending ? (
+        {isTyping ? (
           <div className="mt-3 flex justify-start">
             <output className="sr-only">{thread.title} đang nhập</output>
             <div
@@ -708,15 +930,6 @@ function ChatThread({
         <div ref={bottomRef} />
       </div>
 
-      {thread.isGroup && !state.familyWarned ? (
-        <button
-          className="mx-3 mb-2 min-h-11 rounded-xl border border-blue-200 bg-blue-50 px-3 text-sm font-medium text-blue-700"
-          onClick={() => dispatch({ type: 'WARN_FAMILY' })}
-          type="button"
-        >
-          Nhắc cả nhà kiểm tra các tài khoản vừa nhắn
-        </button>
-      ) : null}
       <div className="shrink-0 border-t border-slate-200 bg-white px-3 pb-3 pt-2">
         {isBlocked ? (
           <p className="py-3 text-center text-sm text-slate-500">
@@ -746,35 +959,12 @@ function ChatThread({
               <button
                 aria-label="Gửi tin nhắn"
                 className="grid size-11 place-items-center rounded-full bg-blue-600 text-white disabled:opacity-40"
-                disabled={!draft.trim() || isAnyPending}
+                disabled={!draft.trim() || isPending}
                 onClick={send}
                 type="button"
               >
                 <Send className="size-4" />
               </button>
-            </div>
-            <div className="mt-1.5 flex items-center justify-between gap-2 px-1 text-[10px]">
-              <p className="min-w-0 truncate text-slate-400">
-                {isAnyPending && !isPending
-                  ? `Đang chờ ${pendingThreadTitle ?? 'cuộc trò chuyện khác'} trả lời…`
-                  : 'Không nhập thông tin cá nhân, mật khẩu hoặc mã thật.'}
-              </p>
-              <p
-                className={`shrink-0 font-medium ${isPending ? 'text-indigo-600' : replyMode === 'fallback' ? 'text-amber-600' : 'text-indigo-600'}`}
-                title={
-                  replyMode === 'fallback'
-                    ? 'Kết nối AI bị gián đoạn ở lượt vừa rồi; tin tiếp theo sẽ tự thử lại.'
-                    : 'Lời thoại do AI của nhân vật tạo; cốt truyện vẫn do game kiểm soát.'
-                }
-              >
-                {isPending
-                  ? `◌ ${state.pendingNpcTurn?.senderLabel ?? thread.title} đang tạo…`
-                  : replyMode === 'fallback'
-                    ? '◆ Lượt trước: dự phòng'
-                    : replyMode === 'ai'
-                      ? '✦ Lượt trước: Gemini'
-                      : '◇ Nhắn để dùng Gemini'}
-              </p>
             </div>
           </div>
         )}
@@ -796,8 +986,8 @@ function ChatThread({
             </DialogTitle>
             <DialogDescription>
               {moderation === 'block'
-                ? 'Thao tác này chỉ diễn ra trong mô phỏng. Tin nhắn mới từ tài khoản này sẽ không xuất hiện sau khi chặn.'
-                : 'Báo cáo này chỉ diễn ra trong mô phỏng và giúp người thân biết tài khoản cần được kiểm tra.'}
+                ? 'Tin nhắn mới từ tài khoản này sẽ không xuất hiện sau khi chặn.'
+                : 'Nền tảng sẽ ghi nhận báo cáo và giữ lại cuộc trò chuyện để bạn có thể xem lại.'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="bg-slate-50">
@@ -826,10 +1016,12 @@ function CallsApp({
   state,
   scenario,
   dispatch,
+  onInspectIdentity,
 }: {
   state: GameState;
   scenario: ScenarioDefinition;
   dispatch: React.Dispatch<Parameters<typeof gameReducer>[1]>;
+  onInspectIdentity: (profile: IdentityProfile) => void;
 }) {
   const [result, setResult] = useState<{
     call: CallDefinition;
@@ -861,32 +1053,45 @@ function CallsApp({
           Liên hệ gần đây
         </h2>
         <div className="mt-2 space-y-2">
-          {scenario.calls.map((item) => (
-            <div
-              className="flex min-h-20 items-center gap-3 rounded-2xl bg-white p-3 shadow-sm"
-              key={item.id}
-            >
-              <span
-                className={`grid size-11 shrink-0 place-items-center rounded-full ${item.color} font-semibold text-white`}
+          {scenario.calls.map((item) => {
+            const identity = identityForCall(scenario.id, item.id);
+            return (
+              <div
+                className="flex min-h-20 items-center gap-2 rounded-2xl bg-white p-3 shadow-sm"
+                key={item.id}
               >
-                {item.initials}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold">{item.name}</p>
-                <p className="truncate text-xs text-slate-500">
-                  {item.numberLabel}
-                </p>
+                <button
+                  className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                  disabled={!identity}
+                  onClick={() => identity && onInspectIdentity(identity)}
+                  type="button"
+                >
+                  <span
+                    className={`grid size-11 shrink-0 place-items-center rounded-full ${item.color} font-semibold text-white`}
+                  >
+                    {item.initials}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold">
+                      {item.name}
+                    </span>
+                    <span className="block truncate text-xs text-slate-500">
+                      {item.numberLabel}
+                    </span>
+                  </span>
+                  <Info className="size-4 shrink-0 text-slate-400" />
+                </button>
+                <button
+                  aria-label={`Gọi ${item.name}`}
+                  className="grid size-11 shrink-0 place-items-center rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
+                  onClick={() => call(item)}
+                  type="button"
+                >
+                  <PhoneCall className="size-5" />
+                </button>
               </div>
-              <button
-                aria-label={`Gọi ${item.name}`}
-                className="grid size-11 place-items-center rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
-                onClick={() => call(item)}
-                type="button"
-              >
-                <PhoneCall className="size-5" />
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
       <Dialog
@@ -1005,7 +1210,7 @@ function BankApp({
     }
     if (!matchedRequest || matchedRequest.institutionLabel !== institution) {
       setFormError(
-        'Không tìm thấy thông tin người nhận trong dữ liệu mô phỏng. Hãy kiểm tra lại từng ký tự.',
+        'Không tìm thấy thông tin người nhận. Hãy kiểm tra lại từng ký tự.',
       );
       return;
     }
@@ -1014,7 +1219,7 @@ function BankApp({
       return;
     }
     if (amount > currentBalance(state, scenario)) {
-      setFormError('Số dư mô phỏng không đủ cho giao dịch này.');
+      setFormError('Số dư không đủ cho giao dịch này.');
       return;
     }
     setFormError('');
@@ -1039,7 +1244,7 @@ function BankApp({
     <div className="flex h-full flex-col bg-[#f4f6fb] text-slate-950">
       <AppHeader
         title="Ngân hàng Mộc"
-        subtitle="Tài khoản mô phỏng"
+        subtitle="Tài khoản thanh toán"
         onBack={() => dispatch({ type: 'HOME' })}
       />
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-24 pt-4">
@@ -1060,9 +1265,6 @@ function BankApp({
           {!channel ? (
             <div>
               <p className="text-sm font-semibold">Bạn muốn làm gì?</p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                Tự nhập thông tin từ những gì bạn đã đọc hoặc xác minh.
-              </p>
               <div className="mt-4 grid gap-2">
                 {(
                   [
@@ -1094,9 +1296,6 @@ function BankApp({
                 <div>
                   <p className="text-sm font-semibold">
                     {channelLabels[channel].title}
-                  </p>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    Không có thông tin nào được điền sẵn.
                   </p>
                 </div>
                 <button
@@ -1213,7 +1412,7 @@ function BankApp({
           {receipt ? (
             <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
               <p className="flex items-center gap-2 font-semibold">
-                <CircleCheck className="size-4" /> Giao dịch mô phỏng thành công
+                <CircleCheck className="size-4" /> Giao dịch thành công
               </p>
               <p className="mt-1 text-xs leading-5">
                 {formatMoney(receipt.amount)} tới {receipt.recipient} ·{' '}
@@ -1276,8 +1475,7 @@ function BankApp({
               {pendingPayment ? formatMoney(pendingPayment.amount) : ''}
             </DialogTitle>
             <DialogDescription>
-              Kiểm tra lần cuối. Đây là giao dịch trong game, không chuyển tiền
-              thật.
+              Kiểm tra lại người nhận và số tiền trước khi xác nhận.
             </DialogDescription>
           </DialogHeader>
           <dl className="space-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
@@ -1417,8 +1615,9 @@ function BrowserApp({
           <DialogHeader>
             <DialogTitle>{riskCard?.actionLabel}?</DialogTitle>
             <DialogDescription>
-              Bạn không cần nhập bất kỳ dữ liệu thật nào. Game sẽ chỉ ghi nhận
-              lựa chọn mô phỏng này.
+              {riskCard?.riskAction === 'credentials_shared'
+                ? 'Trang sẽ tiếp tục bằng tài khoản game đang đăng nhập trên thiết bị.'
+                : 'Mã xác nhận AS-4821 sẽ được gửi tới tài khoản hỗ trợ.'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="bg-slate-50">
@@ -1437,7 +1636,7 @@ function BrowserApp({
                 setRiskCard(null);
               }}
             >
-              Tiếp tục mô phỏng
+              {riskCard?.riskAction === 'otp_shared' ? 'Gửi mã' : 'Tiếp tục'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1447,22 +1646,17 @@ function BrowserApp({
 }
 
 function NotesApp({
-  state,
   scenario,
   dispatch,
 }: {
-  state: GameState;
   scenario: ScenarioDefinition;
   dispatch: React.Dispatch<Parameters<typeof gameReducer>[1]>;
 }) {
-  const facts = scenario.facts.filter((fact) =>
-    state.discoveredFactIds.includes(fact.id),
-  );
   return (
     <div className="flex h-full flex-col bg-[#fbf8ef] text-slate-950">
       <AppHeader
         title="Ghi chú"
-        subtitle="Những thông tin bạn đã thấy"
+        subtitle="Trên thiết bị"
         onBack={() => dispatch({ type: 'HOME' })}
       />
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-24 pt-4">
@@ -1470,40 +1664,24 @@ function NotesApp({
           <p className="text-xs font-semibold text-amber-700">
             {scenario.dayLabel}
           </p>
-          <h2 className="mt-1 text-xl font-semibold">Việc tối nay</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            {scenario.eveningSummary}
-          </p>
+          <h2 className="mt-1 text-xl font-semibold">Ghi chú gần đây</h2>
         </div>
-        <h2 className="mt-6 text-xs font-semibold tracking-wide text-slate-500 uppercase">
-          Thông tin đã ghi lại
-        </h2>
-        <div className="mt-2 space-y-2">
-          {facts.map((fact) => (
-            <article
-              className="rounded-2xl bg-white p-4 shadow-sm"
-              key={fact.id}
-            >
+        <div className="mt-3 space-y-2">
+          {personalNotes[scenario.id].map((note, index) => (
+            <article className="rounded-2xl bg-white p-4 shadow-sm" key={note}>
               <div className="flex gap-3">
                 <BookOpenText className="mt-0.5 size-4 shrink-0 text-amber-600" />
                 <div>
-                  <h3 className="text-sm font-semibold">{fact.title}</h3>
-                  <p className="mt-1 text-sm leading-5 text-slate-600">
-                    {fact.detail}
-                  </p>
-                  <p className="mt-2 text-[11px] text-slate-400">
-                    Nguồn: {fact.source}
+                  <h3 className="text-xs font-semibold text-slate-400">
+                    Ghi chú {index + 1}
+                  </h3>
+                  <p className="mt-1 text-sm leading-5 text-slate-700">
+                    {note}
                   </p>
                 </div>
               </div>
             </article>
           ))}
-          {!facts.length ? (
-            <p className="rounded-2xl bg-white p-4 text-sm leading-5 text-slate-500">
-              Khi bạn gọi điện hoặc đối chiếu thông tin, các chi tiết đáng nhớ
-              sẽ xuất hiện ở đây.
-            </p>
-          ) : null}
         </div>
       </div>
     </div>
@@ -1656,6 +1834,7 @@ function PhoneFrame({
   state,
   scenario,
   dispatch,
+  typingThreadIds,
   onFinish,
   onReset,
   onReplay,
@@ -1663,6 +1842,7 @@ function PhoneFrame({
   state: GameState;
   scenario: ScenarioDefinition;
   dispatch: React.Dispatch<Parameters<typeof gameReducer>[1]>;
+  typingThreadIds: Set<string>;
   onFinish: () => void;
   onReset: () => void;
   onReplay: () => void;
@@ -1670,6 +1850,8 @@ function PhoneFrame({
   const [hiddenNotificationId, setHiddenNotificationId] = useState<
     string | null
   >(null);
+  const [selectedIdentity, setSelectedIdentity] =
+    useState<IdentityProfile | null>(null);
   const latestNotification = state.notifications.find(
     (notification) =>
       !state.readNotificationIds.includes(notification.id) &&
@@ -1685,10 +1867,18 @@ function PhoneFrame({
       dispatch({ type: 'OPEN_THREAD', threadId: latestNotification.threadId });
     else dispatch({ type: 'OPEN_APP', appId: latestNotification.app });
   };
+  const latestNotificationIdentity = latestNotification?.threadId
+    ? identityForThread(scenario.id, latestNotification.threadId)
+    : null;
   let content: React.ReactNode;
   if (state.screen === 'lock')
     content = (
-      <LockScreen state={state} scenario={scenario} dispatch={dispatch} />
+      <LockScreen
+        state={state}
+        scenario={scenario}
+        dispatch={dispatch}
+        onInspectIdentity={setSelectedIdentity}
+      />
     );
   else if (state.screen === 'debrief')
     content = (
@@ -1711,11 +1901,22 @@ function PhoneFrame({
     );
   else if (state.activeApp === 'messages')
     content = (
-      <MessagesApp state={state} scenario={scenario} dispatch={dispatch} />
+      <MessagesApp
+        state={state}
+        scenario={scenario}
+        dispatch={dispatch}
+        typingThreadIds={typingThreadIds}
+        onInspectIdentity={setSelectedIdentity}
+      />
     );
   else if (state.activeApp === 'calls')
     content = (
-      <CallsApp state={state} scenario={scenario} dispatch={dispatch} />
+      <CallsApp
+        state={state}
+        scenario={scenario}
+        dispatch={dispatch}
+        onInspectIdentity={setSelectedIdentity}
+      />
     );
   else if (state.activeApp === 'bank')
     content = <BankApp state={state} scenario={scenario} dispatch={dispatch} />;
@@ -1723,10 +1924,7 @@ function PhoneFrame({
     content = (
       <BrowserApp state={state} scenario={scenario} dispatch={dispatch} />
     );
-  else
-    content = (
-      <NotesApp state={state} scenario={scenario} dispatch={dispatch} />
-    );
+  else content = <NotesApp scenario={scenario} dispatch={dispatch} />;
 
   return (
     <main className="min-h-dvh overflow-hidden bg-[radial-gradient(circle_at_top,#21304d_0%,#0b1220_48%,#050914_100%)] text-white sm:grid sm:place-items-center sm:p-5">
@@ -1759,6 +1957,16 @@ function PhoneFrame({
                 {latestNotification.time}
               </span>
             </button>
+            {latestNotificationIdentity ? (
+              <button
+                aria-label={`Xem hồ sơ ${latestNotification.title}`}
+                className="grid size-10 shrink-0 place-items-center rounded-full text-slate-400 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                onClick={() => setSelectedIdentity(latestNotificationIdentity)}
+                type="button"
+              >
+                <Info className="size-4" />
+              </button>
+            ) : null}
             <button
               aria-label="Ẩn thông báo"
               className="mr-1 grid size-10 shrink-0 place-items-center rounded-full text-slate-400 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
@@ -1805,6 +2013,24 @@ function PhoneFrame({
             </button>
           </nav>
         ) : null}
+        <IdentitySheet
+          profile={selectedIdentity}
+          canOpenThread={Boolean(
+            selectedIdentity?.linkedThreadId &&
+            (state.messages[selectedIdentity.linkedThreadId]?.length ?? 0) > 0,
+          )}
+          onClose={() => setSelectedIdentity(null)}
+          onOpenThread={(threadId) => {
+            setSelectedIdentity(null);
+            if (state.screen === 'lock') dispatch({ type: 'UNLOCK' });
+            dispatch({ type: 'OPEN_THREAD', threadId });
+          }}
+          onOpenCalls={() => {
+            setSelectedIdentity(null);
+            if (state.screen === 'lock') dispatch({ type: 'UNLOCK' });
+            dispatch({ type: 'OPEN_APP', appId: 'calls' });
+          }}
+        />
       </section>
     </main>
   );
@@ -1819,8 +2045,14 @@ export function PhoneGame() {
     null,
   );
   const [debugTokenCopied, setDebugTokenCopied] = useState(false);
+  const [typingTurnIds, setTypingTurnIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const stateRef = useRef(state);
-  const startedTurnRef = useRef<string | null>(null);
+  const startedTurnIdsRef = useRef(new Set<string>());
+  const turnTimerRefs = useRef(new Map<string, number>());
+  const activePersonaIdsRef = useRef(new Set<string>());
   const appCheckSetupDismissedRef = useRef(false);
 
   useEffect(() => {
@@ -1841,109 +2073,204 @@ export function PhoneGame() {
   }, [hydrated, state]);
 
   useEffect(() => {
-    const pending = state.pendingNpcTurn;
-    const scenario = getScenario(state.characterId);
-    if (!pending || !scenario || startedTurnRef.current === pending.id) return;
-    const thread = scenario.threads.find(
-      (item) => item.id === pending.threadId,
-    );
-    const messages = state.messages[pending.threadId] ?? [];
-    const latest = [...messages]
-      .reverse()
-      .find((message) => message.author === 'player');
-    if (!thread || !latest) return;
-    const agent = getNpcAgent(scenario, thread, pending.agentId);
-    startedTurnRef.current = pending.id;
-    if (!agent) {
-      dispatch({
-        type: 'NPC_FAILED',
-        runId: pending.runId,
-        turnId: pending.id,
-      });
-      return;
-    }
-    const intent = classifyIntent(latest.text);
-    const sceneState = [
-      ...scenario.scheduledEvents
-        .filter(
-          (event) =>
-            event.threadId === thread.id &&
-            state.triggeredEventIds.includes(event.id),
-        )
-        .map((event) => `Đã tới mốc: ${event.notification.body}`),
-      ...visiblePaymentRequests(state, scenario)
-        .filter((request) => request.sourceThreadId === thread.id)
-        .map(
-          (request) =>
-            `${request.title}: ${state.requestStatus[request.id] === 'paid' ? 'người chơi đã thanh toán' : state.requestStatus[request.id] === 'declined' ? 'người chơi đã từ chối' : 'đang chờ quyết định'}.`,
-        ),
-    ];
+    const runPendingTurn = (turnId: string) => {
+      const latestState = stateRef.current;
+      const pending = latestState.pendingNpcTurns.find(
+        (item) => item.id === turnId,
+      );
+      const scenario = getScenario(latestState.characterId);
+      if (!pending || !scenario || pending.runId !== latestState.runId) return;
 
-    void generateFirebaseNpcReply({
-      personaId: pending.memoryScopeId,
-      npcName: agent.name,
-      playerRole: `${scenario.profile.name}, ${scenario.profile.age}, ${scenario.profile.role}`,
-      roleBrief: `${agent.roleBrief}\nÝ định gần nhất của người chơi: ${intent}.`,
-      allowedFacts: agent.allowedFacts,
-      forbiddenClaims: agent.forbiddenClaims,
-      voiceExamples: agent.voiceExamples,
-      sceneState,
-      participantLabel: pending.senderLabel,
-      latestMessage: latest.text,
-      history: collectNpcMemory(
-        state,
-        scenario,
-        pending.agentId,
-        thread.id,
-        latest.id,
-      ),
-    })
-      .then(({ reply }) => {
-        const latestState = stateRef.current;
-        const latestScenario = getScenario(latestState.characterId);
-        dispatch({
-          type: 'NPC_REPLY',
-          runId: pending.runId,
-          turnId: pending.id,
-          threadId: pending.threadId,
-          text: reply,
-          time: latestScenario
-            ? gameTime(latestScenario, latestState.elapsedMinutes)
-            : latest.time,
-        });
-      })
-      .catch((error: unknown) => {
-        const diagnostic = getFirebaseAiFailureDiagnostic(error);
-        console.warn(
-          `[Firebase AI] NPC reply failed: kind=${diagnostic.kind} code=${diagnostic.code || 'unknown'} status=${diagnostic.status ?? 'unknown'} detail=${diagnostic.detail || 'unavailable'}`,
-        );
-        if (
-          diagnostic.kind === 'app-check' &&
-          !appCheckSetupDismissedRef.current
-        ) {
-          const debugToken = getLocalAppCheckDebugToken();
-          if (debugToken) {
-            setDebugTokenCopied(false);
-            setAppCheckDebugToken(debugToken);
-          }
-        }
+      const thread = scenario.threads.find(
+        (item) => item.id === pending.threadId,
+      );
+      const latest = (latestState.messages[pending.threadId] ?? []).find(
+        (message) => message.id === pending.playerMessageId,
+      );
+      const agent = thread
+        ? getNpcAgent(scenario, thread, pending.agentId)
+        : null;
+      if (!thread || !latest || !agent) {
         dispatch({
           type: 'NPC_FAILED',
           runId: pending.runId,
           turnId: pending.id,
         });
-      });
-  }, [state]);
+        return;
+      }
+
+      if (activePersonaIdsRef.current.has(pending.memoryScopeId)) {
+        const retryTimer = window.setTimeout(
+          () => runPendingTurn(pending.id),
+          450,
+        );
+        turnTimerRefs.current.set(pending.id, retryTimer);
+        return;
+      }
+      activePersonaIdsRef.current.add(pending.memoryScopeId);
+
+      setTypingTurnIds((current) => new Set(current).add(pending.id));
+      const clearTyping = () =>
+        setTypingTurnIds((current) => {
+          const next = new Set(current);
+          next.delete(pending.id);
+          return next;
+        });
+      const releasePersona = () =>
+        activePersonaIdsRef.current.delete(pending.memoryScopeId);
+
+      if (pending.responseKind === 'local' && pending.localReply) {
+        const localTimer = window.setTimeout(() => {
+          const currentState = stateRef.current;
+          const currentScenario = getScenario(currentState.characterId);
+          dispatch({
+            type: 'NPC_REPLY',
+            runId: pending.runId,
+            turnId: pending.id,
+            threadId: pending.threadId,
+            text: pending.localReply!,
+            time: currentScenario
+              ? gameTime(currentScenario, currentState.elapsedMinutes)
+              : latest.time,
+            mode: 'local',
+          });
+          clearTyping();
+          releasePersona();
+          turnTimerRefs.current.delete(pending.id);
+        }, 850);
+        turnTimerRefs.current.set(pending.id, localTimer);
+        return;
+      }
+
+      const intent = classifyIntent(latest.text);
+      const sceneState = [
+        ...scenario.scheduledEvents
+          .filter(
+            (event) =>
+              event.threadId === thread.id &&
+              latestState.triggeredEventIds.includes(event.id),
+          )
+          .map((event) => `Đã tới mốc: ${event.notification.body}`),
+        ...visiblePaymentRequests(latestState, scenario)
+          .filter((request) => request.sourceThreadId === thread.id)
+          .map(
+            (request) =>
+              `${request.title}: ${latestState.requestStatus[request.id] === 'paid' ? 'người chơi đã thanh toán' : latestState.requestStatus[request.id] === 'declined' ? 'người chơi đã từ chối' : 'đang chờ quyết định'}.`,
+          ),
+      ];
+
+      void generateFirebaseNpcReply({
+        personaId: pending.memoryScopeId,
+        npcName: agent.name,
+        playerRole: `${scenario.profile.name}, ${scenario.profile.age}, ${scenario.profile.role}`,
+        roleBrief: `${agent.roleBrief}\nÝ định gần nhất của người chơi: ${intent}.${pending.responseGuidance ? `\nNhịp phản hồi: ${pending.responseGuidance}` : ''}`,
+        allowedFacts: agent.allowedFacts,
+        forbiddenClaims: agent.forbiddenClaims,
+        voiceExamples: agent.voiceExamples,
+        sceneState,
+        participantLabel: pending.senderLabel,
+        latestMessage: latest.text,
+        history: collectNpcMemory(
+          latestState,
+          scenario,
+          pending.agentId,
+          thread.id,
+          latest.id,
+        ),
+      })
+        .then(({ reply }) => {
+          const currentState = stateRef.current;
+          const currentScenario = getScenario(currentState.characterId);
+          dispatch({
+            type: 'NPC_REPLY',
+            runId: pending.runId,
+            turnId: pending.id,
+            threadId: pending.threadId,
+            text: reply,
+            time: currentScenario
+              ? gameTime(currentScenario, currentState.elapsedMinutes)
+              : latest.time,
+          });
+        })
+        .catch((error: unknown) => {
+          const diagnostic = getFirebaseAiFailureDiagnostic(error);
+          console.warn(
+            `[Firebase AI] NPC reply failed: kind=${diagnostic.kind} code=${diagnostic.code || 'unknown'} status=${diagnostic.status ?? 'unknown'} detail=${diagnostic.detail || 'unavailable'}`,
+          );
+          if (
+            diagnostic.kind === 'app-check' &&
+            !appCheckSetupDismissedRef.current
+          ) {
+            const debugToken = getLocalAppCheckDebugToken();
+            if (debugToken) {
+              setDebugTokenCopied(false);
+              setAppCheckDebugToken(debugToken);
+            }
+          }
+          dispatch({
+            type: 'NPC_FAILED',
+            runId: pending.runId,
+            turnId: pending.id,
+          });
+        })
+        .finally(() => {
+          clearTyping();
+          releasePersona();
+          turnTimerRefs.current.delete(pending.id);
+        });
+    };
+
+    for (const pending of state.pendingNpcTurns) {
+      if (startedTurnIdsRef.current.has(pending.id)) continue;
+      startedTurnIdsRef.current.add(pending.id);
+      const timer = window.setTimeout(
+        () => runPendingTurn(pending.id),
+        pending.delayMs,
+      );
+      turnTimerRefs.current.set(pending.id, timer);
+    }
+  }, [state.pendingNpcTurns]);
+
+  useEffect(
+    () => () => {
+      for (const timer of turnTimerRefs.current.values())
+        window.clearTimeout(timer);
+      turnTimerRefs.current.clear();
+      activePersonaIdsRef.current.clear();
+    },
+    [],
+  );
+
+  const typingThreadIds = useMemo(
+    () =>
+      new Set(
+        state.pendingNpcTurns
+          .filter((pending) => typingTurnIds.has(pending.id))
+          .map((pending) => pending.threadId),
+      ),
+    [state.pendingNpcTurns, typingTurnIds],
+  );
 
   const scenario = useMemo(
     () => getScenario(state.characterId),
     [state.characterId],
   );
+  const clearPendingTurnTimers = () => {
+    for (const timer of turnTimerRefs.current.values())
+      window.clearTimeout(timer);
+    turnTimerRefs.current.clear();
+    startedTurnIdsRef.current.clear();
+    activePersonaIdsRef.current.clear();
+    setTypingTurnIds(new Set());
+  };
   const start = (characterId: CharacterId) => {
+    clearPendingTurnTimers();
     draftCache.clear();
     dispatch({ type: 'START', characterId, runId: makeRunId() });
+    setShowOnboarding(true);
   };
   const reset = () => {
+    clearPendingTurnTimers();
     clearGameState();
     draftCache.clear();
     dispatch({ type: 'RESET' });
@@ -1951,12 +2278,14 @@ export function PhoneGame() {
   };
   const replay = () => {
     if (state.characterId) {
+      clearPendingTurnTimers();
       draftCache.clear();
       dispatch({
         type: 'START',
         characterId: state.characterId,
         runId: makeRunId(),
       });
+      setShowOnboarding(true);
     }
   };
 
@@ -1977,10 +2306,39 @@ export function PhoneGame() {
         state={state}
         scenario={scenario}
         dispatch={dispatch}
+        typingThreadIds={typingThreadIds}
         onFinish={() => setConfirmFinish(true)}
         onReset={() => setConfirmReset(true)}
         onReplay={replay}
       />
+      <Dialog open={showOnboarding} onOpenChange={setShowOnboarding}>
+        <DialogContent
+          className="bg-white text-slate-950"
+          showCloseButton={false}
+        >
+          <DialogHeader>
+            <div
+              className={`mb-2 grid size-12 place-items-center rounded-2xl bg-gradient-to-br ${scenario.profile.accent} font-semibold text-slate-950`}
+            >
+              {scenario.profile.initials}
+            </div>
+            <DialogTitle>
+              Đây là điện thoại của {scenario.profile.name}
+            </DialogTitle>
+            <DialogDescription className="leading-6">
+              Hãy sử dụng như một chiếc điện thoại bình thường. Câu chuyện sẽ
+              thay đổi theo những gì bạn làm. Mọi tài khoản, dữ liệu và tiền
+              trong trải nghiệm này đều là mô phỏng; không nhập thông tin cá
+              nhân, mật khẩu hoặc mã thật.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="bg-slate-50">
+            <Button className="h-11" onClick={() => setShowOnboarding(false)}>
+              Bắt đầu
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={confirmFinish} onOpenChange={setConfirmFinish}>
         <DialogContent
           className="bg-white text-slate-950"

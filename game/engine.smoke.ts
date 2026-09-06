@@ -8,6 +8,7 @@ import {
   visiblePaymentRequests,
 } from './engine';
 import { collectNpcMemory } from './npc-agents';
+import { loadGameState } from './persistence';
 import { getScenario } from './scenarios';
 import type {
   CharacterId,
@@ -81,11 +82,12 @@ function send(
 }
 
 function failPending(state: GameState) {
-  assert.ok(state.pendingNpcTurn);
+  const pending = state.pendingNpcTurns[0];
+  assert.ok(pending);
   return gameReducer(state, {
     type: 'NPC_FAILED',
     runId: state.runId,
-    turnId: state.pendingNpcTurn.id,
+    turnId: pending.id,
   });
 }
 
@@ -96,12 +98,12 @@ function messageBeat(state: GameState, threadId: string, marker: string) {
     `Mình đang kiểm tra các việc bình thường ${marker}.`,
     `${state.runId}-${marker}`,
   );
-  return next.pendingNpcTurn ? failPending(next) : next;
+  return next.pendingNpcTurns.length ? failPending(next) : next;
 }
 
 function progressToEnding(state: GameState) {
   for (let beat = 0; beat < 30; beat += 1) {
-    if (state.pendingNpcTurn) state = failPending(state);
+    if (state.pendingNpcTurns.length) state = failPending(state);
     const scenario = getScenario(state.characterId);
     assert.ok(scenario);
     if (storyCanEnd(state, scenario)) return state;
@@ -169,8 +171,13 @@ function reachAnRecruiter(runId: string) {
   state = gameReducer(state, { type: 'OPEN_THREAD', threadId: 'an-hanh' });
   state = act(state, call('an-call-hanh'), pay('an-pay-internet'));
   assert.ok(state.triggeredEventIds.includes('an-event-bao'));
+  state = gameReducer(state, {
+    type: 'OPEN_THREAD',
+    threadId: 'an-bao-social',
+  });
   state = gameReducer(state, openCard('an-web-job'));
   state = gameReducer(state, call('an-call-bao'));
+  state = messageBeat(state, 'an-family', `${runId}-recruiter-delay`);
   assert.ok(state.triggeredEventIds.includes('an-event-recruiter'));
   return gameReducer(state, {
     type: 'OPEN_THREAD',
@@ -193,6 +200,101 @@ function reachAnTask(runId = 'an-task') {
   return state;
 }
 
+// Everyday chat behavior is decided locally before any AI request is queued.
+{
+  const base = start('hanh', 'reply-policy');
+
+  const acknowledged = send(base, 'hanh-family', 'ok', 'ack-turn');
+  assert.equal(acknowledged.pendingNpcTurns.length, 0);
+  assert.equal(
+    acknowledged.messages['hanh-family'].at(-1)?.deliveryStatus,
+    'seen',
+  );
+  assert.equal(acknowledged.tick, base.tick);
+
+  const thanked = send(base, 'hanh-family', 'cảm ơn', 'thanks-turn');
+  assert.equal(thanked.pendingNpcTurns.length, 0);
+  assert.equal(thanked.tick, base.tick);
+
+  const noise = send(base, 'hanh-family', 'zzzzzzzz', 'noise-turn');
+  assert.equal(noise.pendingNpcTurns.length, 0);
+  assert.equal(noise.tick, base.tick);
+
+  const forwardedLink = send(
+    base,
+    'hanh-an-real',
+    'https://example.invalid/kiem-tra',
+    'forwarded-link',
+  );
+  assert.equal(forwardedLink.pendingNpcTurns[0]?.responseKind, 'ai');
+  assert.ok(forwardedLink.pendingNpcTurns[0]?.delayMs >= 6_500);
+
+  const questionLikeAck = send(base, 'hanh-family', 'rồi?', 'ack-question');
+  assert.equal(questionLikeAck.pendingNpcTurns[0]?.responseKind, 'ai');
+
+  let parallel = send(
+    base,
+    'hanh-family',
+    'Cả nhà ăn cơm chưa?',
+    'parallel-family',
+  );
+  parallel = send(
+    parallel,
+    'hanh-an-real',
+    'An còn ở lớp không con?',
+    'parallel-an',
+  );
+  assert.equal(parallel.pendingNpcTurns.length, 2);
+
+  let boundary = send(
+    base,
+    'hanh-an-real',
+    'Đồ ngu, trả lời đi',
+    'boundary-one',
+  );
+  assert.equal(boundary.pendingNpcTurns[0]?.responseKind, 'local');
+  const localPending = boundary.pendingNpcTurns[0];
+  assert.ok(localPending?.localReply);
+  boundary = gameReducer(boundary, {
+    type: 'NPC_REPLY',
+    runId: boundary.runId,
+    turnId: localPending.id,
+    threadId: localPending.threadId,
+    text: localPending.localReply,
+    time: '20:01',
+    mode: 'local',
+  });
+  assert.equal(boundary.messages['hanh-an-real'].at(-1)?.responseMode, 'local');
+  assert.equal(
+    boundary.messages['hanh-an-real'].at(-2)?.deliveryStatus,
+    'seen',
+  );
+  const repeatedAbuse = send(
+    boundary,
+    'hanh-an-real',
+    'Cút đi, đồ ngu',
+    'boundary-two',
+  );
+  assert.equal(repeatedAbuse.pendingNpcTurns.length, 0);
+  assert.equal(repeatedAbuse.tick, boundary.tick);
+
+  let duplicate = send(
+    base,
+    'hanh-family',
+    'Cả nhà ăn cơm chưa?',
+    'duplicate-one',
+  );
+  duplicate = failPending(duplicate);
+  const duplicateAgain = send(
+    duplicate,
+    'hanh-family',
+    'Cả nhà ăn cơm chưa?',
+    'duplicate-two',
+  );
+  assert.equal(duplicateAgain.pendingNpcTurns.length, 0);
+  assert.equal(duplicateAgain.tick, duplicate.tick);
+}
+
 // Every conversation turn is bound to a concrete, isolated AI character.
 {
   let state = start('hanh', 'persona-routing');
@@ -200,10 +302,10 @@ function reachAnTask(runId = 'an-task') {
   assert.ok(scenario);
 
   state = send(state, 'hanh-family', 'Bảo ơi, con về chưa?', 'turn-group-bao');
-  assert.equal(state.pendingNpcTurn?.agentId, 'family.bao');
-  assert.equal(state.pendingNpcTurn?.senderLabel, 'Bảo');
+  assert.equal(state.pendingNpcTurns[0]?.agentId, 'family.bao');
+  assert.equal(state.pendingNpcTurns[0]?.senderLabel, 'Bảo');
   assert.equal(
-    state.pendingNpcTurn?.memoryScopeId,
+    state.pendingNpcTurns[0]?.memoryScopeId,
     'persona-routing:family.bao',
   );
   state = gameReducer(state, {
@@ -224,18 +326,32 @@ function reachAnTask(runId = 'an-task') {
     'An ơi, con còn ở lớp không?',
     'turn-real-an',
   );
-  assert.equal(state.pendingNpcTurn?.agentId, 'family.an');
+  assert.equal(state.pendingNpcTurns[0]?.agentId, 'family.an');
   state = failPending(state);
   assert.equal(state.messages['hanh-an-real'].at(-1)?.responseMode, 'fallback');
 
-  state = send(state, 'hanh-an-new', 'Ai đang nhắn vậy?', 'turn-fake-an');
-  assert.equal(state.pendingNpcTurn?.agentId, 'fraud.fake-an-number');
+  let fakeState = start('hanh', 'persona-routing-fake');
+  fakeState = gameReducer(fakeState, {
+    type: 'OPEN_THREAD',
+    threadId: 'hanh-an-real',
+  });
+  fakeState = gameReducer(fakeState, call('hanh-call-pharmacy'));
+  fakeState = gameReducer(fakeState, call('hanh-call-an'));
+  fakeState = messageBeat(fakeState, 'hanh-family', 'reveal-new-number');
+  assert.ok(fakeState.triggeredEventIds.includes('hanh-event-new-number'));
+  fakeState = send(
+    fakeState,
+    'hanh-an-new',
+    'Ai đang nhắn vậy?',
+    'turn-fake-an',
+  );
+  assert.equal(fakeState.pendingNpcTurns[0]?.agentId, 'fraud.fake-an-number');
   const fakeMemory = collectNpcMemory(
-    state,
+    fakeState,
     scenario,
     'fraud.fake-an-number',
     'hanh-an-new',
-    state.messages['hanh-an-new'].at(-1)?.id ?? '',
+    fakeState.messages['hanh-an-new'].at(-1)?.id ?? '',
   );
   assert.ok(fakeMemory.every((turn) => turn.channelLabel === 'An · số mới'));
 }
@@ -295,6 +411,35 @@ function reachAnTask(runId = 'an-task') {
   );
 }
 
+// A short contextual acceptance is answered, while scripted messages wait for it.
+{
+  let state = reachAnRecruiter('contextual-ok');
+  const beforeAcceptance = state.tick;
+  state = send(state, 'an-recruiter', 'ok', 'contextual-ok-turn');
+  const pending = state.pendingNpcTurns[0];
+  assert.ok(pending);
+  assert.equal(pending.responseKind, 'ai');
+  assert.equal(state.tick, beforeAcceptance + 1);
+
+  state = gameReducer(state, call('an-call-recruiter'));
+  state = gameReducer(state, openCard('an-web-company'));
+  assert.ok(!state.triggeredEventIds.includes('an-event-reward'));
+
+  state = gameReducer(state, {
+    type: 'NPC_REPLY',
+    runId: state.runId,
+    turnId: pending.id,
+    threadId: pending.threadId,
+    text: 'Được em, chị gửi bước tiếp theo nhé.',
+    time: '20:02',
+  });
+  assert.ok(state.triggeredEventIds.includes('an-event-reward'));
+  assert.equal(
+    state.messages['an-recruiter'].at(-1)?.id,
+    'an-event-reward-message',
+  );
+}
+
 // The fake support account appears only after credentials were actually submitted.
 {
   let state = start('bao', 'support-causality');
@@ -335,6 +480,19 @@ function reachAnTask(runId = 'an-task') {
   assert.strictEqual(gameReducer(state, report('bao-an-social')), state);
   state = gameReducer(state, { type: 'WARN_FAMILY' });
   assert.strictEqual(gameReducer(state, { type: 'WARN_FAMILY' }), state);
+}
+
+// Profiles and forged actions cannot open a conversation before it appears.
+{
+  const hidden = start('bao', 'hidden-thread');
+  assert.strictEqual(
+    gameReducer(hidden, { type: 'OPEN_THREAD', threadId: 'bao-an-sms' }),
+    hidden,
+  );
+  assert.strictEqual(
+    send(hidden, 'bao-an-sms', 'Chị nhắn em à?', 'hidden-message'),
+    hidden,
+  );
 }
 
 // Manual payment details are validated, partial amounts accumulate, and balances never overdraw.
@@ -415,7 +573,7 @@ function reachAnTask(runId = 'an-task') {
     text: 'Sắp ăn rồi con.',
     time: '20:01',
   });
-  assert.equal(replied.pendingNpcTurn, null);
+  assert.equal(replied.pendingNpcTurns.length, 0);
   assert.equal(replied.messages['hanh-family'].at(-1)?.text, 'Sắp ăn rồi con.');
   assert.strictEqual(
     gameReducer(replied, {
@@ -430,13 +588,125 @@ function reachAnTask(runId = 'an-task') {
   );
 }
 
+// Restored sessions discard stale or malformed pending turns instead of locking chat.
+{
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        removeItem: (key: string) => values.delete(key),
+        setItem: (key: string, value: string) => values.set(key, value),
+      },
+    },
+  });
+
+  const pendingState = send(
+    start('hanh', 'restore-run'),
+    'hanh-an-real',
+    'Con đang ở đâu vậy?',
+    'restore-turn',
+  );
+  assert.equal(pendingState.pendingNpcTurns.length, 1);
+  values.set('three-screens:session:v3', JSON.stringify(pendingState));
+  assert.equal(loadGameState()?.pendingNpcTurns.length, 1);
+
+  values.set(
+    'three-screens:session:v3',
+    JSON.stringify({
+      ...pendingState,
+      pendingNpcTurns: [
+        { ...pendingState.pendingNpcTurns[0], runId: 'stale-run' },
+      ],
+    }),
+  );
+  assert.equal(loadGameState()?.pendingNpcTurns.length, 0);
+
+  values.clear();
+  values.set(
+    'three-screens:session:v2',
+    JSON.stringify({
+      ...pendingState,
+      saveVersion: 2,
+      pendingNpcTurns: undefined,
+    }),
+  );
+  assert.equal(loadGameState()?.saveVersion, 3);
+  assert.equal(loadGameState()?.pendingNpcTurns.length, 0);
+  Reflect.deleteProperty(globalThis, 'window');
+}
+
 // The result screen stays locked until the narrative reaches its closing beat.
 {
   const initial = start('hanh', 'finish-gate');
   assert.strictEqual(finish(initial), initial);
-  const ready = progressToEnding(initial);
+  let ready = progressToEnding(initial);
+  assert.ok(storyCanEnd(ready, getScenario('hanh')!));
+
+  const awaitingReply = send(
+    ready,
+    'hanh-family',
+    'Cả nhà còn thức không?',
+    'finish-pending',
+  );
+  assert.ok(awaitingReply.pendingNpcTurns.length > 0);
+  assert.ok(!storyCanEnd(awaitingReply, getScenario('hanh')!));
+  assert.strictEqual(finish(awaitingReply), awaitingReply);
+  ready = failPending(awaitingReply);
   assert.ok(storyCanEnd(ready, getScenario('hanh')!));
   assert.equal(finish(ready).screen, 'debrief');
+}
+
+// Ignoring a suspicious link still leaves a causal, safe path to the ending.
+{
+  let an = start('an', 'safe-ignore-an');
+  an = gameReducer(an, { type: 'OPEN_THREAD', threadId: 'an-hanh' });
+  an = act(an, call('an-call-hanh'), pay('an-pay-internet'));
+  assert.ok(an.triggeredEventIds.includes('an-event-bao'));
+  an = gameReducer(an, {
+    type: 'OPEN_THREAD',
+    threadId: 'an-bao-social',
+  });
+  an = gameReducer(an, report('an-bao-social'));
+  an = gameReducer(an, call('an-call-bao'));
+  an = messageBeat(an, 'an-family', 'safe-ignore-an-delay');
+  assert.ok(!an.openedBrowserCardIds.includes('an-web-job'));
+  assert.ok(an.triggeredEventIds.includes('an-event-recruiter'));
+  an = gameReducer(an, {
+    type: 'OPEN_THREAD',
+    threadId: 'an-recruiter',
+  });
+  an = gameReducer(an, call('an-call-recruiter'));
+  an = gameReducer(an, report('an-recruiter'));
+  an = gameReducer(an, openCard('an-web-company'));
+  an = messageBeat(an, 'an-family', 'safe-ignore-an-family-1');
+  an = messageBeat(an, 'an-family', 'safe-ignore-an-family-2');
+  assert.equal(an.riskFlags.length, 0);
+  assert.ok(storyCanEnd(an, getScenario('an')!));
+
+  let bao = start('bao', 'safe-ignore-bao');
+  bao = gameReducer(bao, { type: 'OPEN_THREAD', threadId: 'bao-family' });
+  bao = act(bao, call('bao-call-hanh'), pay('bao-pay-topup'));
+  assert.ok(bao.triggeredEventIds.includes('bao-event-an-social'));
+  bao = gameReducer(bao, {
+    type: 'OPEN_THREAD',
+    threadId: 'bao-an-social',
+  });
+  bao = gameReducer(bao, call('bao-call-game'));
+  bao = messageBeat(bao, 'bao-family', 'safe-ignore-bao-family');
+  bao = messageBeat(bao, 'bao-hanh', 'safe-ignore-bao-hanh');
+  bao = messageBeat(bao, 'bao-game-official', 'safe-ignore-bao-official');
+  assert.ok(!bao.callIds.includes('bao-call-an'));
+  assert.ok(!bao.blockedThreadIds.includes('bao-an-social'));
+  assert.ok(!bao.reportedThreadIds.includes('bao-an-social'));
+  assert.ok(!bao.openedBrowserCardIds.includes('bao-web-official'));
+  assert.ok(!bao.riskFlags.includes('credentials_shared'));
+  assert.ok(bao.triggeredEventIds.includes('bao-event-an-sms'));
+  bao = gameReducer(bao, call('bao-call-an'));
+  bao = gameReducer(bao, report('bao-an-social'));
+  assert.equal(bao.riskFlags.length, 0);
+  assert.ok(storyCanEnd(bao, getScenario('bao')!));
 }
 
 // Each role has a safe route: ordinary mistakes may lower quality, but only fraud causes a loss.

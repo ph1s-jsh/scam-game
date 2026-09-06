@@ -20,7 +20,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
       role: 'Giáo viên đã nghỉ hưu',
       initials: 'H',
       description:
-        'Một buổi tối có đơn thuốc, tin nhắn của hai cháu và vài việc cần thanh toán.',
+        'Một buổi tối ở nhà với những tin nhắn quen thuộc từ gia đình và dịch vụ thường dùng.',
       accent: 'from-rose-400 to-orange-300',
       wallpaper: 'from-[#c8dcf4] via-[#8facd0] to-[#20375f]',
       battery: 78,
@@ -523,7 +523,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
       role: 'Sinh viên năm hai',
       initials: 'A',
       description:
-        'Một ca làm thêm được giới thiệu đúng lúc tiền trọ sắp tới hạn.',
+        'Tan học muộn, An mở điện thoại giữa lịch học, gia đình và những việc còn dang dở.',
       accent: 'from-sky-400 to-indigo-400',
       wallpaper: 'from-[#d8e9fb] via-[#9ebfe5] to-[#355485]',
       battery: 62,
@@ -666,7 +666,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
       {
         id: 'an-recruiter',
         title: 'Chị Vy · Tuyển dụng',
-        subtitle: 'Tài khoản doanh nghiệp chưa xác minh',
+        subtitle: 'Tài khoản doanh nghiệp',
         initials: 'V',
         color: 'bg-violet-500',
         truth: 'scam',
@@ -965,10 +965,13 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
       },
       {
         id: 'an-event-recruiter',
-        delayActions: 1,
-        requiresAll: [
-          { type: 'event', eventId: 'an-event-bao' },
+        delayActions: 3,
+        requiresAll: [{ type: 'event', eventId: 'an-event-bao' }],
+        requiresAny: [
+          { type: 'thread-opened', threadId: 'an-bao-social' },
           { type: 'browser-opened', cardId: 'an-web-job' },
+          { type: 'thread-blocked', threadId: 'an-bao-social' },
+          { type: 'thread-reported', threadId: 'an-bao-social' },
         ],
         threadId: 'an-recruiter',
         notification: {
@@ -1073,7 +1076,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
       role: 'Học sinh lớp 9',
       initials: 'B',
       description:
-        'Giữa lời nhờ của bà, tin nhắn của chị và một sự kiện game vừa xuất hiện.',
+        'Sau giờ học, Bảo mở điện thoại với tin nhắn từ gia đình và những ứng dụng thường dùng.',
       accent: 'from-emerald-400 to-cyan-300',
       wallpaper: 'from-[#d8f2ec] via-[#8bc6c5] to-[#284d68]',
       battery: 85,
@@ -1397,10 +1400,10 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
         urlLabel: 'binhchon-doikhoa.local',
         summary:
           'Trang yêu cầu đăng nhập tài khoản game để ghi nhận một lượt bình chọn.',
-        actionLabel: 'Nhập thông tin mô phỏng',
+        actionLabel: 'Đăng nhập để bình chọn',
         tone: 'social',
         riskAction: 'credentials_shared',
-        riskLabel: 'Nhập thông tin mô phỏng',
+        riskLabel: 'Đăng nhập để bình chọn',
         sourceThreadId: 'bao-fake-support',
         unlockEventId: 'bao-event-an-social',
       },
@@ -1420,10 +1423,10 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
         title: 'Gửi mã cho hỗ trợ',
         urlLabel: 'binhchon-doikhoa.local/xac-nhan',
         summary: 'Trang đang chờ mã 6 số để hoàn tất “nhận quà”.',
-        actionLabel: 'Gửi mã mô phỏng',
+        actionLabel: 'Xác nhận mã',
         tone: 'social',
         riskAction: 'otp_shared',
-        riskLabel: 'Gửi mã mô phỏng',
+        riskLabel: 'Xác nhận mã',
         sourceThreadId: 'bao-fake-support',
         unlockRisk: 'credentials_shared',
       },
@@ -1511,9 +1514,10 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
       },
       {
         id: 'bao-event-an-sms',
-        delayActions: 2,
+        delayActions: 4,
         requiresAll: [{ type: 'event', eventId: 'bao-event-an-social' }],
         requiresAny: [
+          { type: 'thread-opened', threadId: 'bao-an-social' },
           { type: 'call', callId: 'bao-call-an' },
           { type: 'thread-blocked', threadId: 'bao-an-social' },
           { type: 'thread-reported', threadId: 'bao-an-social' },

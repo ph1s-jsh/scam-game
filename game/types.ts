@@ -12,7 +12,9 @@ export type ThreadTruth = 'legit' | 'scam' | 'compromised';
 
 export type MessageAuthor = 'player' | 'npc' | 'system';
 
-export type NpcReplyMode = 'ai' | 'fallback';
+export type NpcReplyMode = 'ai' | 'fallback' | 'local';
+
+export type MessageDeliveryStatus = 'sent' | 'delivered' | 'seen';
 
 export type FactStrength = 'context' | 'strong';
 
@@ -77,6 +79,7 @@ export interface GameMessage {
   senderLabel?: string;
   agentId?: string;
   responseMode?: NpcReplyMode;
+  deliveryStatus?: MessageDeliveryStatus;
   text: string;
   time: string;
 }
@@ -229,6 +232,11 @@ export interface PendingNpcTurn {
   agentId: string;
   memoryScopeId: string;
   senderLabel: string;
+  playerMessageId: string;
+  delayMs: number;
+  responseKind: 'ai' | 'local';
+  localReply?: string;
+  responseGuidance?: string;
 }
 
 export interface Debrief {
@@ -242,7 +250,7 @@ export interface Debrief {
 }
 
 export interface GameState {
-  saveVersion: 2;
+  saveVersion: 3;
   runId: string;
   characterId: CharacterId | null;
   screen: 'select' | 'lock' | 'phone' | 'debrief';
@@ -271,7 +279,7 @@ export interface GameState {
   lastRiskThreadId: string | null;
   lastRecoveryAt: number | null;
   familyWarned: boolean;
-  pendingNpcTurn: PendingNpcTurn | null;
+  pendingNpcTurns: PendingNpcTurn[];
   npcReplyModes: Record<string, NpcReplyMode>;
   debrief: Debrief | null;
 }
@@ -297,6 +305,7 @@ export type GameAction =
       threadId: string;
       text: string;
       time: string;
+      mode?: NpcReplyMode;
     }
   | { type: 'NPC_FAILED'; runId: string; turnId: string }
   | { type: 'CALL'; callId: string; factId?: string }

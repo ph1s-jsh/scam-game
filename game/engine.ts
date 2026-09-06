@@ -1,4 +1,5 @@
 import { selectNpcAgent } from './npc-agents';
+import { planNpcResponse } from './npc-response';
 import { getScenario } from './scenarios';
 import type {
   Debrief,
@@ -16,7 +17,7 @@ import type {
 } from './types';
 
 export const EMPTY_GAME_STATE: GameState = {
-  saveVersion: 2,
+  saveVersion: 3,
   runId: '',
   characterId: null,
   screen: 'select',
@@ -45,7 +46,7 @@ export const EMPTY_GAME_STATE: GameState = {
   lastRiskThreadId: null,
   lastRecoveryAt: null,
   familyWarned: false,
-  pendingNpcTurn: null,
+  pendingNpcTurns: [],
   npcReplyModes: {},
   debrief: null,
 };
@@ -217,7 +218,11 @@ function syncStoryEvents(state: GameState, scenario: ScenarioDefinition) {
         (event) =>
           !next.triggeredEventIds.includes(event.id) &&
           next.queuedEventBeats[event.id] !== undefined &&
-          next.queuedEventBeats[event.id] <= next.tick,
+          next.queuedEventBeats[event.id] <= next.tick &&
+          (!event.threadId ||
+            !next.pendingNpcTurns.some(
+              (pending) => pending.threadId === event.threadId,
+            )),
       )
       .sort(
         (left, right) =>
@@ -393,7 +398,7 @@ export function callIsAvailable(
 export function storyCanEnd(state: GameState, scenario: ScenarioDefinition) {
   return (
     state.triggeredEventIds.includes(scenario.endingEventId) &&
-    state.pendingNpcTurn === null
+    state.pendingNpcTurns.length === 0
   );
 }
 
@@ -699,7 +704,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     }
 
     case 'OPEN_THREAD': {
-      if (!scenario.threads.some((thread) => thread.id === action.threadId))
+      if (
+        !scenario.threads.some((thread) => thread.id === action.threadId) ||
+        !(state.messages[action.threadId]?.length ?? 0)
+      )
         return state;
       const readIds = state.notifications
         .filter((item) => item.threadId === action.threadId)
@@ -749,15 +757,29 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (
         !text ||
         !thread ||
-        state.pendingNpcTurn ||
+        !(state.messages[action.threadId]?.length ?? 0) ||
+        state.pendingNpcTurns.some(
+          (pending) => pending.threadId === action.threadId,
+        ) ||
         state.blockedThreadIds.includes(action.threadId)
       )
         return state;
       const agent = selectNpcAgent(scenario, thread, text);
+      const plan = planNpcResponse({
+        state,
+        scenario,
+        thread,
+        agentId: agent.agentId,
+        text,
+        turnId: action.turnId,
+      });
+      const playerMessageId = `${action.turnId}-player`;
       let next = appendMessage(state, action.threadId, {
+        id: playerMessageId,
         author: 'player',
         text,
         time: action.time,
+        deliveryStatus: plan.deliveryStatus,
       });
       const warnsFamily = Boolean(
         thread.isGroup &&
@@ -768,20 +790,33 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       next = {
         ...next,
         familyWarned: next.familyWarned || warnsFamily,
-        pendingNpcTurn: {
-          id: action.turnId,
-          runId: state.runId,
-          threadId: action.threadId,
-          agentId: agent.agentId,
-          memoryScopeId: `${state.runId}:${agent.memoryKey}`,
-          senderLabel: agent.name,
-        },
+        pendingNpcTurns:
+          plan.disposition === 'reply' || plan.disposition === 'reply_later'
+            ? [
+                ...next.pendingNpcTurns,
+                {
+                  id: action.turnId,
+                  runId: state.runId,
+                  threadId: action.threadId,
+                  agentId: agent.agentId,
+                  memoryScopeId: `${state.runId}:${agent.memoryKey}`,
+                  senderLabel: agent.name,
+                  playerMessageId,
+                  delayMs: plan.delayMs,
+                  responseKind: plan.responseKind ?? 'ai',
+                  localReply: plan.localReply,
+                  responseGuidance: plan.responseGuidance,
+                },
+              ]
+            : next.pendingNpcTurns,
       };
-      return advanceStory(next, scenario, 2);
+      return plan.advancesStory ? advanceStory(next, scenario, 2) : next;
     }
 
     case 'NPC_REPLY': {
-      const pending = state.pendingNpcTurn;
+      const pending = state.pendingNpcTurns.find(
+        (item) => item.id === action.turnId,
+      );
       if (
         !pending ||
         pending.runId !== action.runId ||
@@ -793,13 +828,27 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const thread = scenario.threads.find(
         (item) => item.id === action.threadId,
       );
-      return appendMessage(
+      if (!thread) return state;
+      const responseMode = action.mode ?? 'ai';
+      const messages = {
+        ...state.messages,
+        [action.threadId]: (state.messages[action.threadId] ?? []).map(
+          (message) =>
+            message.id === pending.playerMessageId
+              ? { ...message, deliveryStatus: 'seen' as const }
+              : message,
+        ),
+      };
+      let next = appendMessage(
         {
           ...state,
-          pendingNpcTurn: null,
+          messages,
+          pendingNpcTurns: state.pendingNpcTurns.filter(
+            (item) => item.id !== pending.id,
+          ),
           npcReplyModes: {
             ...state.npcReplyModes,
-            [action.threadId]: 'ai',
+            [action.threadId]: responseMode,
           },
         },
         action.threadId,
@@ -807,28 +856,52 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           author: 'npc',
           senderLabel: thread?.isGroup ? pending.senderLabel : undefined,
           agentId: pending.agentId,
-          responseMode: 'ai',
+          responseMode,
           text: action.text.trim().slice(0, 400),
           time: action.time,
         },
       );
+      if (
+        state.screen === 'phone' &&
+        (state.activeApp !== 'messages' ||
+          state.activeThreadId !== action.threadId)
+      ) {
+        next = appendNotification(next, {
+          id: `${pending.id}-reply-notification`,
+          app: 'messages',
+          title: thread.title,
+          body: action.text.trim().slice(0, 120),
+          time: action.time,
+          threadId: action.threadId,
+        });
+      }
+      return syncStoryEvents(next, scenario);
     }
 
     case 'NPC_FAILED': {
-      const pending = state.pendingNpcTurn;
+      const pending = state.pendingNpcTurns.find(
+        (item) => item.id === action.turnId,
+      );
       if (
         !pending ||
         pending.runId !== action.runId ||
+        state.runId !== action.runId ||
         pending.id !== action.turnId
       )
         return state;
       const thread = scenario.threads.find(
         (item) => item.id === pending.threadId,
       );
-      if (!thread) return { ...state, pendingNpcTurn: null };
-      const lastPlayerMessage = [...(state.messages[pending.threadId] ?? [])]
-        .reverse()
-        .find((item) => item.author === 'player');
+      if (!thread)
+        return {
+          ...state,
+          pendingNpcTurns: state.pendingNpcTurns.filter(
+            (item) => item.id !== pending.id,
+          ),
+        };
+      const lastPlayerMessage = (state.messages[pending.threadId] ?? []).find(
+        (item) => item.id === pending.playerMessageId,
+      );
       const classifiedIntent = classifyIntent(lastPlayerMessage?.text ?? '');
       const hasVisibleRequest = visiblePaymentRequests(state, scenario).some(
         (request) => request.sourceThreadId === pending.threadId,
@@ -837,10 +910,21 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         classifiedIntent === 'money' && !hasVisibleRequest
           ? 'ordinary'
           : classifiedIntent;
-      return appendMessage(
+      let next = appendMessage(
         {
           ...state,
-          pendingNpcTurn: null,
+          messages: {
+            ...state.messages,
+            [pending.threadId]: (state.messages[pending.threadId] ?? []).map(
+              (message) =>
+                message.id === pending.playerMessageId
+                  ? { ...message, deliveryStatus: 'seen' as const }
+                  : message,
+            ),
+          },
+          pendingNpcTurns: state.pendingNpcTurns.filter(
+            (item) => item.id !== pending.id,
+          ),
           npcReplyModes: {
             ...state.npcReplyModes,
             [pending.threadId]: 'fallback',
@@ -860,6 +944,22 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           time: gameTime(scenario, state.elapsedMinutes),
         },
       );
+      if (
+        state.screen === 'phone' &&
+        (state.activeApp !== 'messages' ||
+          state.activeThreadId !== pending.threadId)
+      ) {
+        const reply = next.messages[pending.threadId]?.at(-1)?.text ?? '';
+        next = appendNotification(next, {
+          id: `${pending.id}-reply-notification`,
+          app: 'messages',
+          title: thread.title,
+          body: reply.slice(0, 120),
+          time: gameTime(scenario, state.elapsedMinutes),
+          threadId: pending.threadId,
+        });
+      }
+      return syncStoryEvents(next, scenario);
     }
 
     case 'CALL': {
@@ -1035,10 +1135,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             state.lastRiskThreadId === threadId
               ? state.tick + 1
               : state.lastRecoveryAt,
-          pendingNpcTurn:
-            state.pendingNpcTurn?.threadId === threadId
-              ? null
-              : state.pendingNpcTurn,
+          pendingNpcTurns: state.pendingNpcTurns.filter(
+            (pending) => pending.threadId !== threadId,
+          ),
         },
         scenario,
         1,
@@ -1084,7 +1183,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         screen: 'debrief',
         activeThreadId: null,
-        pendingNpcTurn: null,
+        pendingNpcTurns: [],
         debrief: buildDebrief(state, scenario),
       };
   }
