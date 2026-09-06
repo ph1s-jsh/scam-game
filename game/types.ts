@@ -31,9 +31,14 @@ export type EndingId =
   | 'false-positive'
   | 'trusted-wrong';
 
-export type RequestStatus = 'pending' | 'paid' | 'declined';
+export type RequestStatus = 'pending' | 'paid' | 'arranged' | 'declined';
 
 export type PaymentChannel = 'transfer' | 'bill' | 'topup';
+
+export type PaymentAlternativeMethod =
+  | 'cash-on-delivery'
+  | 'cash-at-counter'
+  | 'trusted-contact';
 
 export type StoryCondition =
   | { type: 'event'; eventId: string }
@@ -82,6 +87,10 @@ export interface GameMessage {
   deliveryStatus?: MessageDeliveryStatus;
   text: string;
   time: string;
+  browserLink?: {
+    label: string;
+    cardId: string;
+  };
 }
 
 export interface NpcFallbacks {
@@ -162,6 +171,18 @@ export interface PaymentRequest {
   onPaidMessage?: string;
   onPaidThreadId?: string;
   onPartialMessage?: string;
+  alternatives?: PaymentAlternative[];
+}
+
+export interface PaymentAlternative {
+  id: string;
+  method: PaymentAlternativeMethod;
+  trigger: 'cash-payment' | 'trusted-contact-cash';
+  threadIds: string[];
+  agentIds: string[];
+  label: string;
+  npcGuidance: string;
+  fallbackReply: string;
 }
 
 export interface BankTransactionSeed {
@@ -237,6 +258,10 @@ export interface PendingNpcTurn {
   responseKind: 'ai' | 'local';
   localReply?: string;
   responseGuidance?: string;
+  settlementOnReply?: {
+    requestId: string;
+    optionId: string;
+  };
 }
 
 export interface Debrief {
@@ -256,6 +281,7 @@ export interface GameState {
   screen: 'select' | 'lock' | 'phone' | 'debrief';
   activeApp: PhoneAppId;
   activeThreadId: string | null;
+  focusedBrowserCardId: string | null;
   tick: number;
   elapsedMinutes: number;
   sequence: number;
@@ -272,6 +298,7 @@ export interface GameState {
   attemptedCallIds: string[];
   transactions: RuntimeTransaction[];
   requestStatus: Record<string, RequestStatus>;
+  requestArrangementOptionIds: Record<string, string>;
   blockedThreadIds: string[];
   reportedThreadIds: string[];
   riskFlags: RiskFlag[];
@@ -290,6 +317,7 @@ export type GameAction =
   | { type: 'OPEN_APP'; appId: PhoneAppId }
   | { type: 'OPEN_THREAD'; threadId: string }
   | { type: 'OPEN_BROWSER_CARD'; cardId: string }
+  | { type: 'OPEN_MESSAGE_LINK'; threadId: string; messageId: string }
   | { type: 'HOME' }
   | {
       type: 'SEND_MESSAGE';

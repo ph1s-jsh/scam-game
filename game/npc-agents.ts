@@ -113,6 +113,8 @@ const GROUP_AGENTS: Record<CharacterId, NpcAgentProfile[]> = {
         'An đang học đến 20 giờ.',
         'Bảo học bù và về muộn.',
         'Cả nhà biết có đơn thuốc huyết áp giao tối nay.',
+        'Nếu Bà Hạnh nhờ rõ ràng, An có thể thanh toán đúng 186.000đ cho đơn MH-203 rồi nhận lại tiền mặt từ bà.',
+        'Bà Hạnh có thể chọn trả 186.000đ tiền mặt khi nhận đúng túi thuốc.',
       ],
       forbiddenClaims: ['Không quyết định hộ Bà Hạnh hoặc Bảo.'],
       voiceExamples: [
@@ -151,6 +153,7 @@ const GROUP_AGENTS: Record<CharacterId, NpcAgentProfile[]> = {
         'Bà Hạnh đang ở nhà.',
         'Cả nhà chờ An về ăn tối.',
         'Bảo có thể bị đăng xuất khỏi tài khoản mạng xã hội.',
+        'Bà có thể tự đóng 219.000đ tiền cước Internet tại điểm thu chính thức bằng mã P203-08.',
       ],
       forbiddenClaims: ['Không quyết định hộ An hoặc Bảo.'],
       voiceExamples: [

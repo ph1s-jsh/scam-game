@@ -1,4 +1,10 @@
 import { selectNpcAgent } from './npc-agents';
+import {
+  findPaymentArrangement,
+  paymentAlternativeFor,
+  requestIsHandled,
+  validatedPendingAlternative,
+} from './payment-arrangements';
 import { planNpcResponse } from './npc-response';
 import { getScenario } from './scenarios';
 import type {
@@ -23,6 +29,7 @@ export const EMPTY_GAME_STATE: GameState = {
   screen: 'select',
   activeApp: 'home',
   activeThreadId: null,
+  focusedBrowserCardId: null,
   tick: 0,
   elapsedMinutes: 0,
   sequence: 0,
@@ -39,6 +46,7 @@ export const EMPTY_GAME_STATE: GameState = {
   attemptedCallIds: [],
   transactions: [],
   requestStatus: {},
+  requestArrangementOptionIds: {},
   blockedThreadIds: [],
   reportedThreadIds: [],
   riskFlags: [],
@@ -468,6 +476,26 @@ function threadIntroduced(
   );
 }
 
+function applyPendingPaymentArrangement(
+  state: GameState,
+  scenario: ScenarioDefinition,
+  pending: GameState['pendingNpcTurns'][number],
+) {
+  const configured = validatedPendingAlternative(state, scenario, pending);
+  if (!configured) return state;
+  return {
+    ...state,
+    requestStatus: {
+      ...state.requestStatus,
+      [configured.request.id]: 'arranged' as const,
+    },
+    requestArrangementOptionIds: {
+      ...state.requestArrangementOptionIds,
+      [configured.request.id]: configured.option.id,
+    },
+  };
+}
+
 function buildDebrief(state: GameState, scenario: ScenarioDefinition): Debrief {
   const riskSet = new Set(state.riskFlags);
   const hasSeriousRisk = riskSet.size > 0;
@@ -507,8 +535,8 @@ function buildDebrief(state: GameState, scenario: ScenarioDefinition): Debrief {
     (total, transaction) => total + transaction.amount,
     0,
   );
-  const allLegitPaid = legitRequests.every(
-    (request) => state.requestStatus[request.id] === 'paid',
+  const allLegitHandled = legitRequests.every((request) =>
+    requestIsHandled(state.requestStatus[request.id]),
   );
   const falsePositiveRequest = legitRequests.some(
     (request) => state.requestStatus[request.id] === 'declined',
@@ -547,7 +575,7 @@ function buildDebrief(state: GameState, scenario: ScenarioDefinition): Debrief {
   else if (hasSeriousRisk) ending = 'trusted-wrong';
   else if (falsePositive) ending = 'false-positive';
   else if (
-    !allLegitPaid ||
+    !allLegitHandled ||
     hasPendingLegit ||
     !harmfulHandled ||
     !hasIndependentVerification ||
@@ -569,7 +597,7 @@ function buildDebrief(state: GameState, scenario: ScenarioDefinition): Debrief {
     100,
     strongFacts.length * 28 + (state.callIds.length > 0 ? 12 : 0),
   );
-  const dailyLife = allLegitPaid ? 100 : falsePositive ? 15 : 45;
+  const dailyLife = allLegitHandled ? 100 : falsePositive ? 15 : 45;
   const family = Math.min(
     100,
     (state.familyWarned ? 55 : 0) +
@@ -613,10 +641,18 @@ function buildDebrief(state: GameState, scenario: ScenarioDefinition): Debrief {
     timeline.push(
       `Bạn đã kiểm tra độc lập ${strongFacts.length} thông tin quan trọng.`,
     );
-  if (allLegitPaid)
-    timeline.push('Yêu cầu thanh toán hợp lệ đã được hoàn thành.');
+  if (allLegitHandled)
+    timeline.push('Yêu cầu thanh toán hợp lệ đã có phương án xử lý phù hợp.');
   else if (hasPendingLegit)
     timeline.push('Một yêu cầu đời thường hợp lệ vẫn đang chờ xử lý.');
+  for (const request of legitRequests) {
+    if (state.requestStatus[request.id] !== 'arranged') continue;
+    const optionId = state.requestArrangementOptionIds[request.id];
+    const option = optionId
+      ? paymentAlternativeFor(scenario, request.id, optionId)?.option
+      : null;
+    if (option) timeline.push(option.label);
+  }
   if (
     harmfulRequests.some(
       (request) => state.requestStatus[request.id] === 'declined',
@@ -693,6 +729,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           screen: 'phone',
           activeApp: action.appId,
           activeThreadId: null,
+          focusedBrowserCardId:
+            action.appId === 'browser' ? null : state.focusedBrowserCardId,
           openedAppIds: unique([...state.openedAppIds, action.appId]),
           readNotificationIds: unique([
             ...state.readNotificationIds,
@@ -746,6 +784,33 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       );
     }
 
+    case 'OPEN_MESSAGE_LINK': {
+      const message = (state.messages[action.threadId] ?? []).find(
+        (candidate) => candidate.id === action.messageId,
+      );
+      const card = message?.browserLink
+        ? visibleBrowserCards(state, scenario).find(
+            (candidate) => candidate.id === message.browserLink?.cardId,
+          )
+        : null;
+      if (!message?.browserLink || !card) return state;
+      const next: GameState = {
+        ...state,
+        screen: 'phone',
+        activeApp: 'browser',
+        activeThreadId: null,
+        focusedBrowserCardId: card.id,
+        openedAppIds: unique([...state.openedAppIds, 'browser']),
+        openedBrowserCardIds: unique([...state.openedBrowserCardIds, card.id]),
+        discoveredFactIds: card.factId
+          ? unique([...state.discoveredFactIds, card.factId])
+          : state.discoveredFactIds,
+      };
+      return state.openedBrowserCardIds.includes(card.id)
+        ? syncStoryEvents(next, scenario)
+        : advanceStory(next, scenario, 3);
+    }
+
     case 'HOME':
       return { ...state, activeApp: 'home', activeThreadId: null };
 
@@ -773,6 +838,23 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         text,
         turnId: action.turnId,
       });
+      const settlementOnReply =
+        plan.responseKind !== 'local' && plan.disposition !== 'ignore'
+          ? findPaymentArrangement({
+              state,
+              scenario,
+              threadId: action.threadId,
+              agentId: agent.agentId,
+              text,
+            })
+          : null;
+      const settlementConfiguration = settlementOnReply
+        ? paymentAlternativeFor(
+            scenario,
+            settlementOnReply.requestId,
+            settlementOnReply.optionId,
+          )
+        : null;
       const playerMessageId = `${action.turnId}-player`;
       let next = appendMessage(state, action.threadId, {
         id: playerMessageId,
@@ -791,7 +873,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         ...next,
         familyWarned: next.familyWarned || warnsFamily,
         pendingNpcTurns:
-          plan.disposition === 'reply' || plan.disposition === 'reply_later'
+          settlementOnReply ||
+          plan.disposition === 'reply' ||
+          plan.disposition === 'reply_later'
             ? [
                 ...next.pendingNpcTurns,
                 {
@@ -802,15 +886,42 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                   memoryScopeId: `${state.runId}:${agent.memoryKey}`,
                   senderLabel: agent.name,
                   playerMessageId,
-                  delayMs: plan.delayMs,
-                  responseKind: plan.responseKind ?? 'ai',
+                  delayMs: settlementOnReply
+                    ? Math.max(plan.delayMs, 6_500)
+                    : plan.delayMs,
+                  responseKind: settlementOnReply
+                    ? 'ai'
+                    : (plan.responseKind ?? 'ai'),
                   localReply: plan.localReply,
-                  responseGuidance: plan.responseGuidance,
+                  responseGuidance:
+                    settlementConfiguration?.option.npcGuidance ??
+                    plan.responseGuidance,
+                  settlementOnReply: settlementOnReply ?? undefined,
                 },
               ]
             : next.pendingNpcTurns,
       };
-      return plan.advancesStory ? advanceStory(next, scenario, 2) : next;
+      const settlementUnlockEventId =
+        settlementConfiguration?.request.unlockEventId;
+      if (
+        settlementUnlockEventId &&
+        !next.triggeredEventIds.includes(settlementUnlockEventId)
+      ) {
+        next = {
+          ...next,
+          queuedEventBeats: {
+            ...next.queuedEventBeats,
+            [settlementUnlockEventId]: Math.min(
+              next.queuedEventBeats[settlementUnlockEventId] ??
+                Number.POSITIVE_INFINITY,
+              next.tick + 1,
+            ),
+          },
+        };
+      }
+      return plan.advancesStory || settlementOnReply
+        ? advanceStory(next, scenario, 2)
+        : next;
     }
 
     case 'NPC_REPLY': {
@@ -861,6 +972,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           time: action.time,
         },
       );
+      next = applyPendingPaymentArrangement(next, scenario, pending);
       if (
         state.screen === 'phone' &&
         (state.activeApp !== 'messages' ||
@@ -910,6 +1022,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         classifiedIntent === 'money' && !hasVisibleRequest
           ? 'ordinary'
           : classifiedIntent;
+      const settlement = validatedPendingAlternative(state, scenario, pending);
       let next = appendMessage(
         {
           ...state,
@@ -936,14 +1049,17 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           senderLabel: thread.isGroup ? pending.senderLabel : undefined,
           agentId: pending.agentId,
           responseMode: 'fallback',
-          text: pickFallback(
-            thread.fallbacks,
-            intent,
-            `${state.runId}:${pending.id}:${intent}`,
-          ),
+          text:
+            settlement?.option.fallbackReply ??
+            pickFallback(
+              thread.fallbacks,
+              intent,
+              `${state.runId}:${pending.id}:${intent}`,
+            ),
           time: gameTime(scenario, state.elapsedMinutes),
         },
       );
+      next = applyPendingPaymentArrangement(next, scenario, pending);
       if (
         state.screen === 'phone' &&
         (state.activeApp !== 'messages' ||
@@ -1018,6 +1134,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         !request ||
         !isRequestAvailable(request, state) ||
         state.requestStatus[request.id] !== 'pending' ||
+        state.pendingNpcTurns.some(
+          (pending) => pending.settlementOnReply?.requestId === request.id,
+        ) ||
         action.channel !== request.channel ||
         action.institutionLabel !== request.institutionLabel ||
         normalizePaymentDestination(action.destinationValue) !==

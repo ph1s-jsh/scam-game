@@ -108,6 +108,8 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
         allowedFacts: [
           'Đơn thuốc 186.000đ.',
           'Nhà thuốc Minh Tâm giao tối nay.',
+          'Nếu Bà Hạnh nhờ rõ ràng, An có thể chuyển đúng 186.000đ cho đơn MH-203 rồi nhận lại tiền mặt từ bà.',
+          'Bà Hạnh cũng có thể thanh toán 186.000đ tiền mặt khi nhận đúng đơn thuốc.',
           'An không đổi số và không nhờ đóng học phí.',
         ],
         forbiddenClaims: ['Không xin thêm tiền.', 'Không nói mình đã về nhà.'],
@@ -214,6 +216,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
           'Người nhận Hạnh.',
           'Thuốc huyết áp.',
           'Tổng tiền 186.000đ.',
+          'Khách có thể thanh toán 186.000đ tiền mặt cho nhân viên giao hàng sau khi kiểm tra đúng túi tên Hạnh.',
           'Tài khoản thu hộ mô phỏng là 000203186001 tại Ngân hàng Mộc, tên NHÀ THUỐC MINH TÂM.',
         ],
         forbiddenClaims: [
@@ -227,7 +230,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
             'Cô có thể đối chiếu mã MH-203 và gọi số cửa hàng trong phiếu đơn ạ.',
           ],
           money: [
-            'Tổng đơn là 186.000đ, tài khoản thu hộ 000203186001 mang tên NHÀ THUỐC MINH TÂM ạ.',
+            'Tổng đơn là 186.000đ; cô có thể chuyển vào tài khoản thu hộ của nhà thuốc hoặc trả tiền mặt khi nhận đúng đơn ạ.',
           ],
           help: [
             'Nếu chưa chắc, cô có thể chờ người nhà xác nhận rồi mới nhận đơn ạ.',
@@ -296,6 +299,34 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
           'Nhà thuốc đã nhận 186.000đ. Cảm ơn cô, cô nhớ kiểm tra đúng tên trên túi thuốc ạ.',
         onPartialMessage:
           'Hệ thống mới ghi nhận một phần thanh toán. Đơn MH-203 vẫn còn thiếu {remaining}.',
+        alternatives: [
+          {
+            id: 'hanh-an-pays-cash-back',
+            method: 'trusted-contact',
+            trigger: 'trusted-contact-cash',
+            threadIds: ['hanh-an-real', 'hanh-family'],
+            agentIds: ['family.an'],
+            label:
+              'An nhận lời thanh toán đúng 186.000đ cho đơn MH-203; Bà Hạnh hoàn lại An bằng tiền mặt.',
+            npcGuidance:
+              'Bộ máy game đã xác nhận Bà Hạnh đang đề nghị An thanh toán hộ đúng 186.000đ cho đơn MH-203 và sẽ đưa lại An tiền mặt. An đồng ý rõ ràng, nhắc đúng số tiền và không đổi sang phương án khác.',
+            fallbackReply:
+              'Dạ được bà. Con thanh toán đúng 186.000đ cho đơn MH-203, lát về bà đưa lại con tiền mặt nha.',
+          },
+          {
+            id: 'hanh-pharmacy-cash-on-delivery',
+            method: 'cash-on-delivery',
+            trigger: 'cash-payment',
+            threadIds: ['hanh-an-real', 'hanh-family', 'hanh-pharmacy'],
+            agentIds: ['family.an', 'service.minh-tam'],
+            label:
+              'Đơn MH-203 được chọn thanh toán 186.000đ tiền mặt khi nhận đúng túi thuốc.',
+            npcGuidance:
+              'Bộ máy game đã xác nhận Bà Hạnh chọn thanh toán 186.000đ tiền mặt khi nhận đúng đơn MH-203. Hãy đồng ý rõ ràng, nhắc bà kiểm tra túi tên Hạnh và không yêu cầu chuyển khoản thêm.',
+            fallbackReply:
+              'Dạ được ạ. Bà thanh toán 186.000đ tiền mặt khi nhận và kiểm tra đúng túi thuốc tên Hạnh nha.',
+          },
+        ],
       },
       {
         id: 'hanh-pay-tuition',
@@ -464,7 +495,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
         },
         message: {
           author: 'npc',
-          text: 'Đơn MH-203 · Người nhận: Hạnh · Thuốc huyết áp · 186.000đ. Nếu chuyển khoản, cô dùng STK thu hộ 000203186001, tên NHÀ THUỐC MINH TÂM và kiểm tra đúng tên trước khi nhận ạ.',
+          text: 'Đơn MH-203 · Người nhận: Hạnh · Thuốc huyết áp · 186.000đ. Cô có thể trả tiền mặt khi nhận đúng túi thuốc; nếu chuyển khoản, dùng STK thu hộ 000203186001, tên NHÀ THUỐC MINH TÂM ạ.',
           time: '18:42',
         },
       },
@@ -609,6 +640,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
           'Mã khách hàng P203-08.',
           'Hóa đơn giấy ở ngăn bàn.',
           'Bà ở nhà.',
+          'Bà có thể tự mang hóa đơn ra điểm thu chính thức và đóng 219.000đ tiền mặt.',
         ],
         forbiddenClaims: [
           'Không xin chuyển tiền tới tài khoản cá nhân.',
@@ -784,6 +816,21 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
           'Bà thấy báo đã đóng rồi. Cảm ơn con nha, về ăn cơm thôi.',
         onPartialMessage:
           'Ứng dụng báo hóa đơn P203-08 vẫn còn thiếu {remaining} đó con.',
+        alternatives: [
+          {
+            id: 'an-hanh-cash-at-counter',
+            method: 'cash-at-counter',
+            trigger: 'cash-payment',
+            threadIds: ['an-hanh', 'an-family'],
+            agentIds: ['family.hanh'],
+            label:
+              'Bà Hạnh nhận tự đóng 219.000đ tiền mặt tại điểm thu chính thức bằng mã P203-08.',
+            npcGuidance:
+              'Bộ máy game đã xác nhận An đề nghị Bà Hạnh tự đóng 219.000đ tiền mặt tại điểm thu chính thức bằng mã P203-08. Bà đồng ý rõ ràng và không nói sẽ đưa tiền cho người lạ.',
+            fallbackReply:
+              'Ừ, bà sẽ mang hóa đơn ra điểm thu chính thức, đóng 219.000đ tiền mặt bằng mã P203-08 nha con.',
+          },
+        ],
       },
       {
         id: 'an-pay-task',
@@ -1404,7 +1451,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
         tone: 'social',
         riskAction: 'credentials_shared',
         riskLabel: 'Đăng nhập để bình chọn',
-        sourceThreadId: 'bao-fake-support',
+        sourceThreadId: 'bao-an-social',
         unlockEventId: 'bao-event-an-social',
       },
       {
@@ -1489,8 +1536,12 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
         },
         message: {
           author: 'npc',
-          text: 'Bảo vote giúp đội khoa của chị với. Đăng nhập game là vote được, còn thiếu ba lượt thôi.',
+          text: 'Bảo vote giúp đội khoa của chị với. Đăng nhập game là vote được, còn thiếu ba lượt thôi. Chị gửi link ở dưới nha.',
           time: '16:13',
+          browserLink: {
+            label: 'binhchon-doikhoa.local',
+            cardId: 'bao-web-vote',
+          },
         },
       },
       {

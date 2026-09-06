@@ -36,6 +36,13 @@ function isValidPendingTurn(
       (typeof pending.localReply === 'string' && pending.localReply.trim())) &&
     (pending.responseGuidance === undefined ||
       typeof pending.responseGuidance === 'string') &&
+    (pending.settlementOnReply === undefined ||
+      (typeof pending.settlementOnReply === 'object' &&
+        pending.settlementOnReply !== null &&
+        typeof pending.settlementOnReply.requestId === 'string' &&
+        Boolean(pending.settlementOnReply.requestId) &&
+        typeof pending.settlementOnReply.optionId === 'string' &&
+        Boolean(pending.settlementOnReply.optionId))) &&
     Array.isArray(sourceMessages) &&
     sourceMessages.some(
       (message) =>
@@ -70,10 +77,28 @@ export function loadGameState(): GameState | null {
       !parsed.requestStatus
     )
       return null;
+    const requestArrangementOptionIds =
+      typeof parsed.requestArrangementOptionIds === 'object' &&
+      parsed.requestArrangementOptionIds !== null &&
+      !Array.isArray(parsed.requestArrangementOptionIds)
+        ? Object.fromEntries(
+            Object.entries(parsed.requestArrangementOptionIds).filter(
+              (entry): entry is [string, string] =>
+                Boolean(entry[0]) &&
+                typeof entry[1] === 'string' &&
+                Boolean(entry[1]),
+            ),
+          )
+        : {};
     const restored = {
       ...EMPTY_GAME_STATE,
       ...parsed,
       saveVersion: 3,
+      focusedBrowserCardId:
+        typeof parsed.focusedBrowserCardId === 'string'
+          ? parsed.focusedBrowserCardId
+          : null,
+      requestArrangementOptionIds,
       pendingNpcTurns:
         parsed.saveVersion === 3 && Array.isArray(parsed.pendingNpcTurns)
           ? parsed.pendingNpcTurns.filter((pending) =>

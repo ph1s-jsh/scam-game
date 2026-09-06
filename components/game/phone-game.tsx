@@ -62,6 +62,7 @@ import {
   visiblePaymentRequests,
 } from '@/game/engine';
 import { collectNpcMemory, getNpcAgent } from '@/game/npc-agents';
+import { selectedPaymentAlternative } from '@/game/payment-arrangements';
 import {
   identityForCall,
   identityForGroupSender,
@@ -875,6 +876,26 @@ function ChatThread({
                 <p className="whitespace-pre-wrap text-[14px] leading-5">
                   {message.text}
                 </p>
+                {message.browserLink ? (
+                  <button
+                    aria-label={`Mở ${message.browserLink.label} trong trình duyệt mô phỏng`}
+                    className={`mt-2 flex min-h-10 w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-semibold underline decoration-1 underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${message.author === 'player' ? 'border-blue-400 bg-blue-500 text-white' : 'border-blue-200 bg-blue-50 text-blue-700'}`}
+                    onClick={() =>
+                      dispatch({
+                        type: 'OPEN_MESSAGE_LINK',
+                        threadId: thread.id,
+                        messageId: message.id,
+                      })
+                    }
+                    type="button"
+                  >
+                    <Globe2 className="size-4 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">
+                      {message.browserLink.label}
+                    </span>
+                    <ExternalLink className="size-3.5 shrink-0" />
+                  </button>
+                ) : null}
                 <p
                   className={`mt-1 flex items-center gap-1.5 text-[11px] ${message.author === 'player' ? 'text-blue-100' : 'text-slate-400'}`}
                 >
@@ -1148,6 +1169,13 @@ function BankApp({
     time: string;
   } | null>(null);
   const history = [...state.transactions, ...scenario.bankHistory];
+  const arrangedRequests = visiblePaymentRequests(state, scenario).flatMap(
+    (request) => {
+      if (state.requestStatus[request.id] !== 'arranged') return [];
+      const option = selectedPaymentAlternative(state, scenario, request.id);
+      return option ? [{ request, option }] : [];
+    },
+  );
   const institutions: Record<PaymentChannel, string[]> = {
     transfer: ['Ngân hàng Mộc', 'Ngân hàng Đại Việt', 'Ngân hàng Phương Nam'],
     bill: ['Mạng Nhà Mình'],
@@ -1215,7 +1243,24 @@ function BankApp({
       return;
     }
     if (state.requestStatus[matchedRequest.id] !== 'pending') {
-      setFormError('Khoản này đã được xử lý trước đó.');
+      const alternative = selectedPaymentAlternative(
+        state,
+        scenario,
+        matchedRequest.id,
+      );
+      setFormError(
+        alternative
+          ? `Khoản này đã được xử lý ngoài ứng dụng: ${alternative.label}`
+          : 'Khoản này đã được xử lý trước đó.',
+      );
+      return;
+    }
+    if (
+      state.pendingNpcTurns.some(
+        (pending) => pending.settlementOnReply?.requestId === matchedRequest.id,
+      )
+    ) {
+      setFormError('Đang chờ người liên quan xác nhận phương án thanh toán.');
       return;
     }
     if (amount > currentBalance(state, scenario)) {
@@ -1257,6 +1302,29 @@ function BankApp({
             •••• 203 · {scenario.profile.name}
           </p>
         </div>
+
+        {arrangedRequests.length ? (
+          <div
+            className="mt-4 space-y-2"
+            aria-label="Khoản đã xử lý ngoài ứng dụng"
+          >
+            {arrangedRequests.map(({ request, option }) => (
+              <div
+                className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-900"
+                key={request.id}
+              >
+                <p className="flex items-center gap-2 text-sm font-semibold">
+                  <CircleCheck className="size-4 shrink-0" />
+                  Đã thống nhất cách thanh toán khác
+                </p>
+                <p className="mt-1 text-xs leading-5">{option.label}</p>
+                <p className="mt-1 text-[11px] text-emerald-700">
+                  Không trừ số dư trong ứng dụng ngân hàng này.
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <h2 className="mt-6 px-1 text-xs font-semibold tracking-wide text-slate-500 uppercase">
           Giao dịch mới
@@ -1558,7 +1626,11 @@ function BrowserApp({
   dispatch: React.Dispatch<Parameters<typeof gameReducer>[1]>;
 }) {
   const [riskCard, setRiskCard] = useState<BrowserCard | null>(null);
-  const cards = visibleBrowserCards(state, scenario);
+  const cards = [...visibleBrowserCards(state, scenario)].sort(
+    (left, right) =>
+      Number(right.id === state.focusedBrowserCardId) -
+      Number(left.id === state.focusedBrowserCardId),
+  );
   const open = (card: BrowserCard) => {
     dispatch({ type: 'OPEN_BROWSER_CARD', cardId: card.id });
     if (card.riskAction) setRiskCard(card);
@@ -1577,9 +1649,18 @@ function BrowserApp({
         <div className="space-y-3">
           {cards.map((card) => (
             <article
-              className="rounded-2xl bg-white p-4 shadow-sm"
+              className={`rounded-2xl bg-white p-4 shadow-sm ${
+                card.id === state.focusedBrowserCardId
+                  ? 'ring-2 ring-blue-500'
+                  : ''
+              }`}
               key={card.id}
             >
+              {card.id === state.focusedBrowserCardId ? (
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-blue-600">
+                  Mở từ tin nhắn
+                </p>
+              ) : null}
               <p className="text-[11px] text-slate-400">{card.urlLabel}</p>
               <h2 className="mt-1 font-semibold">{card.title}</h2>
               <p className="mt-2 text-sm leading-5 text-slate-600">
@@ -2152,18 +2233,39 @@ export function PhoneGame() {
           )
           .map((event) => `Đã tới mốc: ${event.notification.body}`),
         ...visiblePaymentRequests(latestState, scenario)
-          .filter((request) => request.sourceThreadId === thread.id)
-          .map(
+          .filter(
             (request) =>
-              `${request.title}: ${latestState.requestStatus[request.id] === 'paid' ? 'người chơi đã thanh toán' : latestState.requestStatus[request.id] === 'declined' ? 'người chơi đã từ chối' : 'đang chờ quyết định'}.`,
-          ),
+              request.sourceThreadId === thread.id ||
+              request.alternatives?.some(
+                (option) =>
+                  option.threadIds.includes(thread.id) &&
+                  option.agentIds.includes(pending.agentId),
+              ),
+          )
+          .map((request) => {
+            const status = latestState.requestStatus[request.id];
+            const alternative = selectedPaymentAlternative(
+              latestState,
+              scenario,
+              request.id,
+            );
+            const statusLabel =
+              status === 'paid'
+                ? 'người chơi đã thanh toán trong ứng dụng'
+                : status === 'arranged' && alternative
+                  ? alternative.label
+                  : status === 'declined'
+                    ? 'người chơi đã từ chối'
+                    : 'đang chờ quyết định';
+            return `${request.title}: ${statusLabel}.`;
+          }),
       ];
 
       void generateFirebaseNpcReply({
         personaId: pending.memoryScopeId,
         npcName: agent.name,
         playerRole: `${scenario.profile.name}, ${scenario.profile.age}, ${scenario.profile.role}`,
-        roleBrief: `${agent.roleBrief}\nÝ định gần nhất của người chơi: ${intent}.${pending.responseGuidance ? `\nNhịp phản hồi: ${pending.responseGuidance}` : ''}`,
+        roleBrief: `${agent.roleBrief}\nÝ định gần nhất của người chơi: ${intent}.${pending.responseGuidance ? `\n${pending.settlementOnReply ? 'Chỉ dẫn bắt buộc cho lượt này' : 'Nhịp phản hồi'}: ${pending.responseGuidance}` : ''}`,
         allowedFacts: agent.allowedFacts,
         forbiddenClaims: agent.forbiddenClaims,
         voiceExamples: agent.voiceExamples,

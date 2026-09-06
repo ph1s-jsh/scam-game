@@ -8,6 +8,7 @@ import {
   visiblePaymentRequests,
 } from './engine';
 import { collectNpcMemory } from './npc-agents';
+import { findPaymentArrangement } from './payment-arrangements';
 import { loadGameState } from './persistence';
 import { getScenario } from './scenarios';
 import type {
@@ -88,6 +89,19 @@ function failPending(state: GameState) {
     type: 'NPC_FAILED',
     runId: state.runId,
     turnId: pending.id,
+  });
+}
+
+function replyPending(state: GameState, text: string) {
+  const pending = state.pendingNpcTurns[0];
+  assert.ok(pending);
+  return gameReducer(state, {
+    type: 'NPC_REPLY',
+    runId: state.runId,
+    turnId: pending.id,
+    threadId: pending.threadId,
+    text,
+    time: '20:01',
   });
 }
 
@@ -458,6 +472,48 @@ function reachAnTask(runId = 'an-task') {
   assert.ok(state.triggeredEventIds.includes('bao-event-support'));
 }
 
+// Bảo can open the simulated voting page from the link An sent in chat.
+{
+  let state = start('bao', 'message-link');
+  state = gameReducer(state, { type: 'OPEN_THREAD', threadId: 'bao-family' });
+  state = messageBeat(state, 'bao-family', 'message-link-1');
+  state = messageBeat(state, 'bao-family', 'message-link-2');
+  assert.ok(state.triggeredEventIds.includes('bao-event-an-social'));
+
+  const linkedMessage = state.messages['bao-an-social'].find(
+    (message) => message.browserLink?.cardId === 'bao-web-vote',
+  );
+  assert.ok(linkedMessage);
+  assert.strictEqual(
+    gameReducer(state, {
+      type: 'OPEN_MESSAGE_LINK',
+      threadId: 'bao-an-social',
+      messageId: 'missing-message',
+    }),
+    state,
+  );
+
+  state = gameReducer(state, {
+    type: 'OPEN_MESSAGE_LINK',
+    threadId: 'bao-an-social',
+    messageId: linkedMessage.id,
+  });
+  assert.equal(state.activeApp, 'browser');
+  assert.equal(state.focusedBrowserCardId, 'bao-web-vote');
+  assert.ok(state.openedBrowserCardIds.includes('bao-web-vote'));
+  assert.ok(!state.riskFlags.includes('credentials_shared'));
+
+  state = gameReducer(state, {
+    type: 'BROWSER_RISK',
+    risk: 'credentials_shared',
+  });
+  assert.ok(state.riskFlags.includes('credentials_shared'));
+  assert.equal(state.lastRiskThreadId, 'bao-an-social');
+
+  state = gameReducer(state, { type: 'OPEN_APP', appId: 'browser' });
+  assert.equal(state.focusedBrowserCardId, null);
+}
+
 // Repeating completed actions is a true no-op and cannot fast-forward the story.
 {
   let state = start('bao', 'no-op');
@@ -540,6 +596,152 @@ function reachAnTask(runId = 'an-task') {
   assert.strictEqual(gameReducer(lowBalance, pay('bao-pay-topup')), lowBalance);
 }
 
+// Legitimate cash and family arrangements resolve only after the NPC turn, without touching the player's bank balance.
+{
+  const hanhScenario = getScenario('hanh')!;
+  let contact = start('hanh', 'cash-contact');
+  const initialBalance = currentBalance(contact, hanhScenario);
+  contact = send(
+    contact,
+    'hanh-an-real',
+    'An chuyển khoản giúp bà đúng 186.000đ nhé, lúc về bà đưa lại con tiền mặt.',
+    'cash-contact-turn',
+  );
+  const contactPending = contact.pendingNpcTurns[0];
+  assert.equal(
+    contactPending?.settlementOnReply?.optionId,
+    'hanh-an-pays-cash-back',
+  );
+  assert.equal(contact.requestStatus['hanh-pay-pharmacy'], 'pending');
+  assert.equal(currentBalance(contact, hanhScenario), initialBalance);
+  assert.strictEqual(gameReducer(contact, pay('hanh-pay-pharmacy')), contact);
+  const contactReply: GameAction = {
+    type: 'NPC_REPLY',
+    runId: contact.runId,
+    turnId: contactPending.id,
+    threadId: contactPending.threadId,
+    text: 'Dạ được bà, con sẽ thanh toán đúng đơn rồi về nhận lại tiền mặt ạ.',
+    time: '20:01',
+  };
+  contact = gameReducer(contact, contactReply);
+  assert.equal(contact.requestStatus['hanh-pay-pharmacy'], 'arranged');
+  assert.equal(
+    contact.requestArrangementOptionIds['hanh-pay-pharmacy'],
+    'hanh-an-pays-cash-back',
+  );
+  assert.equal(currentBalance(contact, hanhScenario), initialBalance);
+  assert.ok(
+    !contact.transactions.some(
+      (transaction) => transaction.requestId === 'hanh-pay-pharmacy',
+    ),
+  );
+  assert.strictEqual(gameReducer(contact, contactReply), contact);
+  assert.strictEqual(gameReducer(contact, pay('hanh-pay-pharmacy')), contact);
+
+  let cashOnDelivery = start('hanh', 'cash-delivery');
+  cashOnDelivery = gameReducer(cashOnDelivery, {
+    type: 'OPEN_THREAD',
+    threadId: 'hanh-an-real',
+  });
+  cashOnDelivery = messageBeat(
+    cashOnDelivery,
+    'hanh-an-real',
+    'reveal-pharmacy',
+  );
+  assert.ok(cashOnDelivery.triggeredEventIds.includes('hanh-event-pharmacy'));
+  cashOnDelivery = gameReducer(cashOnDelivery, {
+    type: 'OPEN_THREAD',
+    threadId: 'hanh-pharmacy',
+  });
+  cashOnDelivery = send(
+    cashOnDelivery,
+    'hanh-pharmacy',
+    'Cô sẽ trả 186.000đ tiền mặt khi nhận đúng đơn nhé.',
+    'cash-delivery-turn',
+  );
+  assert.equal(
+    cashOnDelivery.pendingNpcTurns[0]?.settlementOnReply?.optionId,
+    'hanh-pharmacy-cash-on-delivery',
+  );
+  cashOnDelivery = failPending(cashOnDelivery);
+  assert.equal(cashOnDelivery.requestStatus['hanh-pay-pharmacy'], 'arranged');
+  assert.match(
+    cashOnDelivery.messages['hanh-pharmacy'].at(-1)?.text ?? '',
+    /tiền mặt khi nhận/i,
+  );
+  assert.ok(
+    !cashOnDelivery.transactions.some(
+      (transaction) => transaction.requestId === 'hanh-pay-pharmacy',
+    ),
+  );
+
+  const anScenario = getScenario('an')!;
+  let anCash = start('an', 'an-cash-counter');
+  const anBalance = currentBalance(anCash, anScenario);
+  anCash = send(anCash, 'an-hanh', 'Bà đưa tiền mặt đi nha.', 'an-cash-turn');
+  assert.equal(
+    anCash.pendingNpcTurns[0]?.settlementOnReply?.optionId,
+    'an-hanh-cash-at-counter',
+  );
+  anCash = replyPending(
+    anCash,
+    'Ừ, bà sẽ mang hóa đơn ra điểm thu chính thức đóng tiền mặt nha con.',
+  );
+  assert.equal(anCash.requestStatus['an-pay-internet'], 'arranged');
+  assert.equal(currentBalance(anCash, anScenario), anBalance);
+
+  const negated = send(
+    start('an', 'cash-negated'),
+    'an-hanh',
+    'Bà đừng đóng tiền mặt, để con kiểm tra lại đã.',
+    'cash-negated-turn',
+  );
+  assert.equal(negated.pendingNpcTurns[0]?.settlementOnReply, undefined);
+
+  const choosesCashInstead = send(
+    start('an', 'cash-instead-of-transfer'),
+    'an-hanh',
+    'Không cần chuyển khoản đâu, bà trả tiền mặt đi nha.',
+    'cash-instead-of-transfer-turn',
+  );
+  assert.equal(
+    choosesCashInstead.pendingNpcTurns[0]?.settlementOnReply?.optionId,
+    'an-hanh-cash-at-counter',
+  );
+
+  const scamScenario = getScenario('hanh')!;
+  assert.equal(
+    findPaymentArrangement({
+      state: start('hanh', 'cash-scam'),
+      scenario: scamScenario,
+      threadId: 'hanh-an-new',
+      agentId: 'fraud.fake-an-number',
+      text: 'Bà sẽ trả tiền mặt cho con, không chuyển khoản nữa.',
+    }),
+    null,
+  );
+
+  const familyAn = send(
+    start('hanh', 'cash-family-an'),
+    'hanh-family',
+    'An ơi, con chuyển hộ bà 186.000đ, về bà đưa lại tiền mặt nha.',
+    'cash-family-an-turn',
+  );
+  assert.equal(familyAn.pendingNpcTurns[0]?.agentId, 'family.an');
+  assert.equal(
+    familyAn.pendingNpcTurns[0]?.settlementOnReply?.optionId,
+    'hanh-an-pays-cash-back',
+  );
+  const familyBao = send(
+    start('hanh', 'cash-family-bao'),
+    'hanh-family',
+    'Bảo ơi, con chuyển hộ bà 186.000đ, về bà đưa lại tiền mặt nha.',
+    'cash-family-bao-turn',
+  );
+  assert.equal(familyBao.pendingNpcTurns[0]?.agentId, 'family.bao');
+  assert.equal(familyBao.pendingNpcTurns[0]?.settlementOnReply, undefined);
+}
+
 // Replies from an old run or a wrong turn never leak into a new game.
 {
   let oldState = start('hanh', 'run-old');
@@ -618,6 +820,20 @@ function reachAnTask(runId = 'an-task') {
       ...pendingState,
       pendingNpcTurns: [
         { ...pendingState.pendingNpcTurns[0], runId: 'stale-run' },
+      ],
+    }),
+  );
+  assert.equal(loadGameState()?.pendingNpcTurns.length, 0);
+
+  values.set(
+    'three-screens:session:v3',
+    JSON.stringify({
+      ...pendingState,
+      pendingNpcTurns: [
+        {
+          ...pendingState.pendingNpcTurns[0],
+          settlementOnReply: { requestId: 203, optionId: null },
+        },
       ],
     }),
   );
@@ -724,6 +940,40 @@ function reachAnTask(runId = 'an-task') {
   );
   assert.equal(finish(hanh).debrief?.ending, 'family-safe');
   assert.equal(finish(hanh).debrief?.outcome, 'safe');
+
+  let hanhCash = progressToEnding(start('hanh', 'safe-hanh-cash'));
+  hanhCash = send(
+    hanhCash,
+    'hanh-an-real',
+    'An chuyển đúng 186.000đ hộ bà, về bà đưa lại con tiền mặt nhé.',
+    'safe-hanh-cash-turn',
+  );
+  hanhCash = replyPending(
+    hanhCash,
+    'Dạ được bà, con thanh toán đúng đơn rồi về nhận tiền mặt ạ.',
+  );
+  hanhCash = act(
+    hanhCash,
+    call('hanh-call-an'),
+    call('hanh-call-pharmacy'),
+    call('hanh-call-bao'),
+    decline('hanh-pay-tuition'),
+    decline('hanh-pay-card'),
+    { type: 'WARN_FAMILY' },
+  );
+  const hanhCashDebrief = finish(hanhCash).debrief;
+  assert.equal(hanhCashDebrief?.ending, 'family-safe');
+  assert.equal(
+    hanhCashDebrief?.dimensions.find(
+      (dimension) => dimension.label === 'Việc đời thường',
+    )?.value,
+    100,
+  );
+  assert.ok(
+    hanhCashDebrief?.timeline.some((item) =>
+      item.includes('hoàn lại An bằng tiền mặt'),
+    ),
+  );
 
   let an = reachAnTask('safe-an');
   an = act(an, decline('an-pay-task'), { type: 'WARN_FAMILY' });
