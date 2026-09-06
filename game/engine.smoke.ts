@@ -850,6 +850,32 @@ function reachAnTask(runId = 'an-task') {
   );
   assert.equal(loadGameState()?.saveVersion, 3);
   assert.equal(loadGameState()?.pendingNpcTurns.length, 0);
+
+  let legacyBao = start('bao', 'restore-message-link');
+  legacyBao = gameReducer(legacyBao, {
+    type: 'OPEN_THREAD',
+    threadId: 'bao-family',
+  });
+  legacyBao = messageBeat(legacyBao, 'bao-family', 'restore-link-1');
+  legacyBao = messageBeat(legacyBao, 'bao-family', 'restore-link-2');
+  const legacyMessages = legacyBao.messages['bao-an-social'].map((message) =>
+    message.id === 'bao-event-an-social-message'
+      ? { ...message, browserLink: undefined }
+      : message,
+  );
+  values.set(
+    'three-screens:session:v3',
+    JSON.stringify({
+      ...legacyBao,
+      messages: { ...legacyBao.messages, 'bao-an-social': legacyMessages },
+    }),
+  );
+  assert.equal(
+    loadGameState()?.messages['bao-an-social'].find(
+      (message) => message.id === 'bao-event-an-social-message',
+    )?.browserLink?.cardId,
+    'bao-web-vote',
+  );
   Reflect.deleteProperty(globalThis, 'window');
 }
 

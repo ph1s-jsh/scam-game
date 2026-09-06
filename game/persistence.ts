@@ -1,9 +1,35 @@
 import { EMPTY_GAME_STATE } from './engine';
 import type { CharacterId, GameState, PendingNpcTurn } from './types';
+import { getScenario } from './scenarios';
 
 const STORAGE_KEY = 'three-screens:session:v3';
 const LEGACY_STORAGE_KEY = 'three-screens:session:v2';
 const characterIds = new Set<CharacterId>(['hanh', 'an', 'bao']);
+
+function restoreConfiguredMessageLinks(state: GameState) {
+  const scenario = getScenario(state.characterId);
+  if (!scenario) return state;
+  let messages = state.messages;
+
+  for (const event of scenario.scheduledEvents) {
+    if (!event.threadId || !event.message?.browserLink) continue;
+    const threadMessages = messages[event.threadId];
+    if (!threadMessages) continue;
+    const scheduledMessageId = `${event.id}-message`;
+    let changed = false;
+    const restoredThread = threadMessages.map((message) => {
+      if (message.id !== scheduledMessageId || message.browserLink)
+        return message;
+      changed = true;
+      return { ...message, browserLink: event.message?.browserLink };
+    });
+    if (!changed) continue;
+    if (messages === state.messages) messages = { ...messages };
+    messages[event.threadId] = restoredThread;
+  }
+
+  return messages === state.messages ? state : { ...state, messages };
+}
 
 function isValidPendingTurn(
   pending: PendingNpcTurn,
@@ -106,7 +132,7 @@ export function loadGameState(): GameState | null {
             )
           : [],
     } as GameState;
-    return restored;
+    return restoreConfiguredMessageLinks(restored);
   } catch {
     return null;
   }
