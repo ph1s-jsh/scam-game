@@ -598,6 +598,48 @@ function reachAnTask(runId = 'an-task') {
     false,
   );
 
+  const negativeFactPlan = {
+    ...plan,
+    factCatalog: [
+      {
+        id: 'negative-fact',
+        text: 'An không đổi số và không nhờ đóng học phí.',
+      },
+    ],
+    requiredFactIds: ['negative-fact'],
+    requiredCriticalValues: [],
+    allowedCriticalValues: [],
+    allowedSensitiveTopics: [],
+    mayClaimPaymentCompleted: false,
+  };
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: negativeFactPlan,
+      reply: 'An không đổi số và không nhờ đóng học phí.',
+      move: negativeFactPlan.move,
+      factIdsUsed: ['negative-fact'],
+    }),
+    true,
+  );
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: negativeFactPlan,
+      reply: 'An đổi số và không nhờ đóng học phí.',
+      move: negativeFactPlan.move,
+      factIdsUsed: ['negative-fact'],
+    }),
+    false,
+  );
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: negativeFactPlan,
+      reply: 'An không đổi số và nhờ đóng học phí.',
+      move: negativeFactPlan.move,
+      factIdsUsed: ['negative-fact'],
+    }),
+    false,
+  );
+
   const staleAction = replyAction(
     state,
     'Hóa đơn là 219.000đ, mã P203-08 đó con.',

@@ -249,33 +249,52 @@ function hasFactualNegation(value: string) {
   return /\b(khong|chua|chang|phu nhan)\b/.test(searchable(value));
 }
 
+function claimClauses(value: string) {
+  return value
+    .toLocaleLowerCase('vi')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/[.!?;,:]+/g, '|')
+    .replace(/\b(?:va|nhung)\b/g, '|')
+    .split('|')
+    .map((clause) => clause.trim())
+    .filter(Boolean);
+}
+
 function factGroundsReply(reply: string, facts: NpcDirectorFact[]) {
-  const replyWords = unique(groundingWords(reply));
-  if (!replyWords.length) return true;
-  const replyIsNegated = hasFactualNegation(reply);
-  const compatibleFacts = facts.filter(
-    (fact) => hasFactualNegation(fact.text) === replyIsNegated,
+  const factClauses = facts.flatMap((fact) =>
+    claimClauses(fact.text).map((clause) => ({
+      clause,
+      words: new Set(groundingWords(clause)),
+      names: new Set(namedTokens(clause)),
+      negated: hasFactualNegation(clause),
+    })),
   );
-  const factWords = new Set(
-    compatibleFacts.flatMap((fact) => groundingWords(fact.text)),
-  );
-  const factNames = new Set(
-    compatibleFacts.flatMap((fact) => namedTokens(fact.text)),
-  );
-  const worldWords = replyWords.filter(
-    (word) => !DIALOGUE_ONLY_WORDS.has(word),
-  );
-  if (!worldWords.length) return true;
-  if (!compatibleFacts.length) return false;
-  const shared = worldWords.filter((word) => factWords.has(word));
-  const unsupported = worldWords.filter((word) => !factWords.has(word));
-  return (
-    unsupported.length === 0 &&
-    (shared.length >= 2 ||
-      shared.some(
-        (word) => word.length >= 7 || /\d/.test(word) || factNames.has(word),
-      ))
-  );
+
+  return claimClauses(reply).every((replyClause) => {
+    const replyWords = unique(groundingWords(replyClause));
+    const worldWords = replyWords.filter(
+      (word) => !DIALOGUE_ONLY_WORDS.has(word),
+    );
+    if (!worldWords.length) return true;
+    const replyIsNegated = hasFactualNegation(replyClause);
+    return factClauses.some((factClause) => {
+      if (factClause.negated !== replyIsNegated) return false;
+      const shared = worldWords.filter((word) => factClause.words.has(word));
+      const unsupported = worldWords.filter(
+        (word) => !factClause.words.has(word),
+      );
+      return (
+        unsupported.length === 0 &&
+        (shared.length >= 2 ||
+          shared.some(
+            (word) =>
+              word.length >= 7 || /\d/.test(word) || factClause.names.has(word),
+          ))
+      );
+    });
+  });
 }
 
 function isDialogueOnlyReply(reply: string) {
