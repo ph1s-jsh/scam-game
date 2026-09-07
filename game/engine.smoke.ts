@@ -4,6 +4,7 @@ import {
   currentBalance,
   EMPTY_GAME_STATE,
   gameReducer,
+  pickFallback,
   storyCanEnd,
   visiblePaymentRequests,
 } from './engine';
@@ -453,6 +454,109 @@ function reachAnTask(runId = 'an-task') {
     'director-direct-owner',
   );
   assert.equal(direct.pendingNpcTurns[0]?.agentId, 'family.an');
+
+  const shorthandQuestion = send(
+    base,
+    'hanh-an-real',
+    'con tự chuyển dc kh con',
+    'director-shorthand-question',
+  );
+  assert.equal(
+    shorthandQuestion.pendingNpcTurns[0]?.directorPlan?.move,
+    'answer',
+  );
+
+  const contextualQuestion = send(
+    base,
+    'hanh-an-real',
+    'hả nhắn gì con',
+    'director-contextual-question',
+  );
+  assert.equal(
+    contextualQuestion.pendingNpcTurns[0]?.directorPlan?.move,
+    'answer',
+  );
+  assert.ok(
+    contextualQuestion.pendingNpcTurns[0]?.directorPlan?.requiredFactIds.some(
+      (factId) => factId.startsWith('dialogue:'),
+    ),
+  );
+  const contextualPlan = contextualQuestion.pendingNpcTurns[0]?.directorPlan;
+  assert.ok(contextualPlan);
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: contextualPlan,
+      reply:
+        'Dạ, con vừa nhắn bà xem đúng túi tên Hạnh, hóa đơn 186.000đ rồi thanh toán giúp con ạ.',
+      move: 'answer',
+      factIdsUsed: contextualPlan.requiredFactIds,
+    }),
+    true,
+  );
+
+  const paymentRefusal = send(
+    base,
+    'hanh-an-real',
+    'bà không thanh toán dc á con',
+    'director-payment-refusal',
+  );
+  assert.equal(paymentRefusal.pendingNpcTurns[0]?.directorPlan?.move, 'refuse');
+  const refusalPlan = paymentRefusal.pendingNpcTurns[0]?.directorPlan;
+  assert.ok(refusalPlan);
+  const refusalClaimId = refusalPlan.factCatalog.find((fact) =>
+    fact.id.startsWith('player-claim:'),
+  )?.id;
+  const paymentProfileId = refusalPlan.factCatalog.find(
+    (fact) =>
+      fact.id.startsWith('profile:') && fact.text.includes('thanh toán'),
+  )?.id;
+  assert.ok(refusalClaimId && paymentProfileId);
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: refusalPlan,
+      reply:
+        'Dạ, vậy bà không thanh toán được thì mình dừng lại đã ạ. Bà nói rõ ý cho con nhé.',
+      move: 'refuse',
+      factIdsUsed: [refusalClaimId, paymentProfileId],
+    }),
+    true,
+  );
+
+  const bareQuestion = send(
+    base,
+    'hanh-an-real',
+    '?',
+    'director-bare-question',
+  );
+  assert.equal(bareQuestion.pendingNpcTurns[0]?.directorPlan?.move, 'clarify');
+  const barePlan = bareQuestion.pendingNpcTurns[0]?.directorPlan;
+  assert.ok(barePlan);
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: barePlan,
+      reply: 'Dạ, ý bà là sao ạ? Bà nói rõ hơn giúp con nhé.',
+      move: 'clarify',
+      factIdsUsed: [],
+    }),
+    true,
+  );
+}
+
+// A failed AI turn does not repeat the same fallback when another safe line exists.
+{
+  const fallbacks = {
+    ordinary: ['Câu mẫu duy nhất.'],
+  };
+  assert.equal(
+    pickFallback(
+      fallbacks,
+      'ordinary',
+      'fallback-no-repeat',
+      ['Câu mẫu duy nhất.'],
+      ['Bạn nói rõ hơn giúp mình nhé.'],
+    ),
+    'Bạn nói rõ hơn giúp mình nhé.',
+  );
 }
 
 // Verified information is shared only with NPCs who observed the channel.

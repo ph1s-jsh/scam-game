@@ -341,17 +341,64 @@ export function pickFallback(
   fallbacks: NpcFallbacks,
   intent: MessageIntent,
   stableKey: string,
+  recentReplies: string[] = [],
+  emergencyReplies: string[] = [],
 ) {
-  const options = fallbacks[intent] ?? fallbacks.ordinary;
   let hash = 0;
   for (let index = 0; index < stableKey.length; index += 1) {
     hash = (hash * 31 + stableKey.charCodeAt(index)) >>> 0;
   }
-  return (
-    options[hash % options.length] ??
-    fallbacks.ordinary[0] ??
-    'Ừ, để mình kiểm tra lại nhé.'
+  const recent = new Set(
+    recentReplies.map((reply) => reply.trim().toLocaleLowerCase('vi')),
   );
+  const groups = [
+    fallbacks[intent] ?? [],
+    fallbacks.ordinary,
+    emergencyReplies,
+  ].map((options) => unique(options));
+  const options = groups
+    .map((group) =>
+      group.filter(
+        (reply) => !recent.has(reply.trim().toLocaleLowerCase('vi')),
+      ),
+    )
+    .find((group) => group.length > 0) ??
+    groups.find((group) => group.length > 0) ?? [
+      'Ừ, để mình kiểm tra lại nhé.',
+    ];
+  return options[hash % options.length];
+}
+
+function emergencyNpcReplies(scenario: ScenarioDefinition, agentId: string) {
+  if (scenario.profile.id === 'hanh' && agentId.startsWith('family.'))
+    return [
+      'Dạ, ý bà là sao ạ? Bà nói rõ hơn giúp con nhé.',
+      'Dạ con đang đọc đây. Bà nói lại ý chính giúp con với ạ.',
+    ];
+  if (scenario.profile.id === 'an' && agentId === 'family.hanh')
+    return [
+      'Ý con là sao, nói rõ cho bà nghe với.',
+      'Bà đang đọc đây, con nói lại ý chính giúp bà nhé.',
+    ];
+  if (scenario.profile.id === 'an' && agentId === 'family.bao')
+    return [
+      'Ý chị là sao? Chị nói rõ hơn giúp em đi.',
+      'Em đang đọc đây, chị nói lại ý chính thử xem.',
+    ];
+  if (scenario.profile.id === 'bao' && agentId === 'family.hanh')
+    return [
+      'Ý con là sao, nói rõ cho bà nghe với.',
+      'Bà đang đọc đây, con nói lại ý chính giúp bà nhé.',
+    ];
+  if (scenario.profile.id === 'bao' && agentId === 'family.an')
+    return [
+      'Ý em là sao? Em nói rõ hơn cho chị nhé.',
+      'Chị đang đọc đây, em nói lại ý chính thử xem.',
+    ];
+  return [
+    'Mình chưa hiểu ý bạn lắm. Bạn nói rõ hơn nhé.',
+    'Bạn nói lại ý chính giúp mình nhé, mình đang đọc đây.',
+  ];
 }
 
 export function visiblePaymentRequests(
@@ -1137,6 +1184,20 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
               thread.fallbacks,
               intent,
               `${state.runId}:${pending.id}:${intent}`,
+              (state.messages[pending.threadId] ?? [])
+                .filter(
+                  (message) =>
+                    message.author === 'npc' &&
+                    (thread.isGroup
+                      ? message.agentId === pending.agentId ||
+                        (!message.agentId &&
+                          message.senderLabel === pending.senderLabel)
+                      : !message.agentId ||
+                        message.agentId === pending.agentId),
+                )
+                .slice(-3)
+                .map((message) => message.text),
+              emergencyNpcReplies(scenario, pending.agentId),
             ),
           time: gameTime(scenario, state.elapsedMinutes),
         },

@@ -2263,6 +2263,7 @@ export function PhoneGame() {
         return;
       }
 
+      let validationRetryScheduled = false;
       void generateFirebaseNpcReply({
         personaId: pending.memoryScopeId,
         npcName: agent.name,
@@ -2315,6 +2316,19 @@ export function PhoneGame() {
               factIdsUsed,
             })
           ) {
+            console.warn(
+              `[NPC director] Rejected a generated reply for move=${move}; retrying with the same world state when possible.`,
+            );
+            if ((currentPending.replanCount ?? 0) < 1) {
+              validationRetryScheduled = true;
+              startedTurnIdsRef.current.delete(pending.id);
+              dispatch({
+                type: 'REPLAN_NPC_TURN',
+                runId: pending.runId,
+                turnId: pending.id,
+              });
+              return;
+            }
             dispatch({
               type: 'NPC_FAILED',
               runId: pending.runId,
@@ -2382,6 +2396,7 @@ export function PhoneGame() {
           clearTyping();
           releasePersona();
           turnTimerRefs.current.delete(pending.id);
+          if (validationRetryScheduled) return;
           const recoveryKey = `${pending.id}:recovery`;
           const recoveryTimer = window.setTimeout(() => {
             turnTimerRefs.current.delete(recoveryKey);
@@ -2391,6 +2406,8 @@ export function PhoneGame() {
             );
             if (
               !currentPending?.directorPlan ||
+              (currentPending.replanCount ?? 0) !==
+                (pending.replanCount ?? 0) ||
               currentPending.directorPlan.baseRevision !==
                 directorPlan.baseRevision
             )

@@ -286,11 +286,11 @@ function factGroundsReply(reply: string, facts: NpcDirectorFact[]) {
         (word) => !factClause.words.has(word),
       );
       return (
-        unsupported.length === 0 &&
+        unsupported.length < shared.length &&
         (shared.length >= 2 ||
           shared.some(
             (word) =>
-              word.length >= 7 || /\d/.test(word) || factClause.names.has(word),
+              word.length >= 3 || /\d/.test(word) || factClause.names.has(word),
           ))
       );
     });
@@ -299,6 +299,27 @@ function factGroundsReply(reply: string, facts: NpcDirectorFact[]) {
 
 function isDialogueOnlyReply(reply: string) {
   return groundingWords(reply).every((word) => DIALOGUE_ONLY_WORDS.has(word));
+}
+
+function claimsPaymentCompleted(value: string) {
+  const paymentAction =
+    '(?:chuyen(?:\\s+khoan)?|thanh\\s+toan|dong(?:\\s+tien)?|tra(?:\\s+tien)?|nop(?:\\s+tien)?)';
+  return claimClauses(value).some((clause) => {
+    if (
+      !sensitiveTopics(clause).some(
+        (topic) => topic === 'bank-transfer' || topic === 'cash-payment',
+      )
+    )
+      return false;
+    return (
+      new RegExp(
+        `\\b(?:da|vua)\\b(?:\\s+[a-z0-9]+){0,4}\\s+\\b${paymentAction}\\b`,
+      ).test(clause) ||
+      new RegExp(
+        `\\b${paymentAction}\\b(?:\\s+[a-z0-9]+){0,4}\\s+\\b(?:xong|roi|thanh\\s+cong)\\b`,
+      ).test(clause)
+    );
+  });
 }
 
 function factMatchesMessage(message: string, factText: string) {
@@ -376,19 +397,29 @@ function plannedMove(
   if (pending.responseKind === 'local') return 'boundary';
   if (pending.settlementOnReply) return 'confirm';
   const value = searchable(latestMessage);
-  if (latestMessage.trim().endsWith('?') || latestMessage.trim().endsWith('？'))
-    return 'answer';
+  if (
+    /phan hoi ngan cho mot cau hoi|xac nhan tu nhien/.test(
+      searchable(pending.responseGuidance ?? ''),
+    )
+  )
+    return 'acknowledge';
   if (
     value === 'khong' ||
     /\b(tu choi|khong dong y|khong muon|khong can|dung lai|huy bo|bo qua|thoi nhe)\b/.test(
+      value,
+    ) ||
+    /\b(khong|ko|kh|k)\b(?:\s+[a-z0-9]+){0,4}\s+\b(chuyen|chuyen khoan|thanh toan|tra|nop|dong|tham gia|lam)\b/.test(
       value,
     )
   )
     return 'refuse';
   if (
-    /\b(ai|tai sao|vi sao|the nao|lam sao|bao nhieu|kiem tra|xac minh)\b/.test(
+    latestMessage.trim().endsWith('?') ||
+    latestMessage.trim().endsWith('？') ||
+    /\b(ai|gi|sao|tai sao|vi sao|the nao|lam sao|bao nhieu|kiem tra|xac minh)\b/.test(
       value,
-    )
+    ) ||
+    /\b(duoc|dc)\s*(khong|ko|kh|k)\b/.test(value)
   )
     return 'answer';
   if (value.split(/\s+/).filter(Boolean).length <= 2) return 'clarify';
@@ -446,6 +477,25 @@ export function createNpcDirectorPlan(
     `player-claim:${latestMessage.id}`,
     `Người chơi vừa nói, chưa mặc định là sự thật: ${latestMessage.text}`,
   );
+
+  const recentNpcMessages = (state.messages[thread.id] ?? [])
+    .filter(
+      (message) =>
+        message.author === 'npc' &&
+        message.id !== latestMessage.id &&
+        (thread.isGroup
+          ? message.agentId === pending.agentId ||
+            (!message.agentId && message.senderLabel === agent.name)
+          : true),
+    )
+    .slice(-3);
+  for (const message of recentNpcMessages) {
+    addFact(
+      factCatalog,
+      `dialogue:${message.id}`,
+      `Trước đó ${agent.name} đã nhắn: ${message.text}`,
+    );
+  }
 
   for (const event of scenario.scheduledEvents) {
     const eventThread = event.threadId
@@ -567,6 +617,10 @@ export function validateNpcDirectorReply(input: {
   const trustedUsedFacts = usedFacts.filter(
     (fact) => !fact.id.startsWith('player-claim:'),
   );
+  const contextualUsedFacts =
+    move === 'acknowledge' || move === 'clarify' || move === 'refuse'
+      ? usedFacts
+      : trustedUsedFacts;
   const replyCriticalValues = extractNpcCriticalValues(reply);
   if (
     plan.requiredCriticalValues.some(
@@ -592,7 +646,7 @@ export function validateNpcDirectorReply(input: {
   if (
     replyTopics.some(
       (topic) =>
-        !trustedUsedFacts.some((fact) =>
+        !contextualUsedFacts.some((fact) =>
           sensitiveTopics(fact.text).includes(topic),
         ),
     )
@@ -612,21 +666,19 @@ export function validateNpcDirectorReply(input: {
       .matchAll(/\p{L}+/gu),
     (match) => match[0],
   );
-  const claimsCompletion =
-    replyWords.includes('đã') ||
-    replyWords.includes('vừa') ||
-    (replyWords.includes('xong') && !replyWords.includes('chưa'));
+  const claimsCompletion = claimsPaymentCompleted(reply);
   const normalizedReply = searchable(reply);
   const admitsUncertainty =
     /\b(khong biet|khong ro|khong nho|chua biet)\b/.test(normalizedReply);
   const makesAssertion = !isDialogueOnlyReply(reply);
   const requiresGrounding =
-    makesAssertion ||
     move === 'confirm' ||
-    (move === 'answer' && !admitsUncertainty);
+    (move === 'answer' && !admitsUncertainty) ||
+    (move === 'acknowledge' && makesAssertion);
   if (
     requiresGrounding &&
-    (!trustedUsedFacts.length || !factGroundsReply(reply, trustedUsedFacts))
+    (!contextualUsedFacts.length ||
+      !factGroundsReply(reply, contextualUsedFacts))
   )
     return false;
   if (
