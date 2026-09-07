@@ -1,10 +1,17 @@
 import { EMPTY_GAME_STATE } from './engine';
+import { agentIdsForThread } from './npc-agents';
 import type { CharacterId, GameState, PendingNpcTurn } from './types';
 import { getScenario } from './scenarios';
 
 const STORAGE_KEY = 'three-screens:session:v3';
 const LEGACY_STORAGE_KEY = 'three-screens:session:v2';
 const characterIds = new Set<CharacterId>(['hanh', 'an', 'bao']);
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === 'string')
+  );
+}
 
 function restoreConfiguredMessageLinks(state: GameState) {
   const scenario = getScenario(state.characterId);
@@ -62,6 +69,8 @@ function isValidPendingTurn(
       (typeof pending.localReply === 'string' && pending.localReply.trim())) &&
     (pending.responseGuidance === undefined ||
       typeof pending.responseGuidance === 'string') &&
+    (pending.replanCount === undefined ||
+      (Number.isInteger(pending.replanCount) && pending.replanCount >= 0)) &&
     (pending.settlementOnReply === undefined ||
       (typeof pending.settlementOnReply === 'object' &&
         pending.settlementOnReply !== null &&
@@ -116,6 +125,41 @@ export function loadGameState(): GameState | null {
             ),
           )
         : {};
+    const scenario = getScenario(parsed.characterId ?? null);
+    const allowedAgentIds = new Set(
+      scenario?.threads.flatMap((thread) =>
+        agentIdsForThread(scenario, thread),
+      ) ?? [],
+    );
+    const allowedFactIds = new Set(
+      scenario?.facts
+        .filter((fact) => parsed.discoveredFactIds?.includes(fact.id))
+        .map((fact) => fact.id) ?? [],
+    );
+    const npcKnownFactIds =
+      typeof parsed.npcKnownFactIds === 'object' &&
+      parsed.npcKnownFactIds !== null &&
+      !Array.isArray(parsed.npcKnownFactIds)
+        ? Object.fromEntries(
+            Object.entries(parsed.npcKnownFactIds).flatMap(
+              ([agentId, factIds]) =>
+                allowedAgentIds.has(agentId) && isStringArray(factIds)
+                  ? [
+                      [
+                        agentId,
+                        [
+                          ...new Set(
+                            factIds.filter((factId) =>
+                              allowedFactIds.has(factId),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ]
+                  : [],
+            ),
+          )
+        : {};
     const restored = {
       ...EMPTY_GAME_STATE,
       ...parsed,
@@ -125,11 +169,16 @@ export function loadGameState(): GameState | null {
           ? parsed.focusedBrowserCardId
           : null,
       requestArrangementOptionIds,
+      npcKnownFactIds,
       pendingNpcTurns:
         parsed.saveVersion === 3 && Array.isArray(parsed.pendingNpcTurns)
-          ? parsed.pendingNpcTurns.filter((pending) =>
-              isValidPendingTurn(pending, parsed),
-            )
+          ? parsed.pendingNpcTurns
+              .filter((pending) => isValidPendingTurn(pending, parsed))
+              .map((pending) => ({
+                ...pending,
+                directorPlan: undefined,
+                replanCount: 0,
+              }))
           : [],
     } as GameState;
     return restoreConfiguredMessageLinks(restored);

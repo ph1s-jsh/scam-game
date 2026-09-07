@@ -1,7 +1,14 @@
 import { selectNpcAgent } from './npc-agents';
 import {
+  createNpcDirectorPlan,
+  npcWorldRevision,
+  teachMessageFactsToObservers,
+  validateNpcDirectorReply,
+} from './npc-director';
+import {
   findPaymentArrangement,
   paymentAlternativeFor,
+  paymentRequestIsAvailable,
   requestIsHandled,
   validatedPendingAlternative,
 } from './payment-arrangements';
@@ -15,7 +22,6 @@ import type {
   MessageIntent,
   NpcFallbacks,
   PaymentChannel,
-  PaymentRequest,
   PhoneNotification,
   RiskFlag,
   ScenarioDefinition,
@@ -47,6 +53,7 @@ export const EMPTY_GAME_STATE: GameState = {
   transactions: [],
   requestStatus: {},
   requestArrangementOptionIds: {},
+  npcKnownFactIds: {},
   blockedThreadIds: [],
   reportedThreadIds: [],
   riskFlags: [],
@@ -90,6 +97,32 @@ function appendNotification(state: GameState, notification: PhoneNotification) {
   if (state.notifications.some((item) => item.id === notification.id))
     return state;
   return { ...state, notifications: [notification, ...state.notifications] };
+}
+
+function attachNpcDirectorPlan(
+  state: GameState,
+  scenario: ScenarioDefinition,
+  turnId: string,
+  isReplan = false,
+) {
+  const pending = state.pendingNpcTurns.find((item) => item.id === turnId);
+  if (!pending || pending.responseKind === 'local') return state;
+  const directorPlan = createNpcDirectorPlan(state, scenario, pending);
+  if (!directorPlan) return state;
+  return {
+    ...state,
+    pendingNpcTurns: state.pendingNpcTurns.map((item) =>
+      item.id === turnId
+        ? {
+            ...item,
+            directorPlan,
+            replanCount: isReplan
+              ? (item.replanCount ?? 0) + 1
+              : (item.replanCount ?? 0),
+          }
+        : item,
+    ),
+  };
 }
 
 function addScheduledEvent(
@@ -321,25 +354,12 @@ export function pickFallback(
   );
 }
 
-function isRequestAvailable(request: PaymentRequest, state: GameState) {
-  if (request.unlockAfter !== undefined && state.tick < request.unlockAfter)
-    return false;
-  if (
-    request.unlockEventId &&
-    !state.triggeredEventIds.includes(request.unlockEventId)
-  )
-    return false;
-  if (request.unlockRisk && !state.riskFlags.includes(request.unlockRisk))
-    return false;
-  return true;
-}
-
 export function visiblePaymentRequests(
   state: GameState,
   scenario: ScenarioDefinition,
 ) {
   return scenario.paymentRequests.filter((request) =>
-    isRequestAvailable(request, state),
+    paymentRequestIsAvailable(request, state),
   );
 }
 
@@ -444,7 +464,8 @@ function threadResolved(
   ];
   const relatedRequests = scenario.paymentRequests.filter(
     (request) =>
-      request.sourceThreadId === threadId && isRequestAvailable(request, state),
+      request.sourceThreadId === threadId &&
+      paymentRequestIsAvailable(request, state),
   );
   const hasIndependentEvidence = relatedFacts.some((factId) =>
     state.discoveredFactIds.includes(factId),
@@ -520,7 +541,7 @@ function buildDebrief(state: GameState, scenario: ScenarioDefinition): Debrief {
   );
   const harmfulRequests = scenario.paymentRequests.filter(
     (request) =>
-      request.truth !== 'legit' && isRequestAvailable(request, state),
+      request.truth !== 'legit' && paymentRequestIsAvailable(request, state),
   );
   const harmfulRequestIds = new Set(
     harmfulRequests.map((request) => request.id),
@@ -829,7 +850,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         state.blockedThreadIds.includes(action.threadId)
       )
         return state;
-      const agent = selectNpcAgent(scenario, thread, text);
+      const agent = selectNpcAgent(scenario, thread, text, state);
       const plan = planNpcResponse({
         state,
         scenario,
@@ -863,6 +884,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         time: action.time,
         deliveryStatus: plan.deliveryStatus,
       });
+      next = teachMessageFactsToObservers(next, scenario, thread, text);
       const warnsFamily = Boolean(
         thread.isGroup &&
         /lừa|giả|hack|chiếm|đừng bấm|đừng chuyển|cảnh giác|mất tài khoản/i.test(
@@ -890,9 +912,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                     ? Math.max(plan.delayMs, 6_500)
                     : plan.delayMs,
                   responseKind: settlementOnReply
-                    ? 'ai'
+                    ? 'local'
                     : (plan.responseKind ?? 'ai'),
-                  localReply: plan.localReply,
+                  localReply:
+                    settlementConfiguration?.option.fallbackReply ??
+                    plan.localReply,
                   responseGuidance:
                     settlementConfiguration?.option.npcGuidance ??
                     plan.responseGuidance,
@@ -919,9 +943,28 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           },
         };
       }
-      return plan.advancesStory || settlementOnReply
-        ? advanceStory(next, scenario, 2)
-        : next;
+      const progressed =
+        plan.advancesStory || settlementOnReply
+          ? advanceStory(next, scenario, 2)
+          : next;
+      return progressed.pendingNpcTurns.some(
+        (pending) => pending.id === action.turnId,
+      )
+        ? attachNpcDirectorPlan(progressed, scenario, action.turnId)
+        : progressed;
+    }
+
+    case 'REPLAN_NPC_TURN': {
+      const pending = state.pendingNpcTurns.find(
+        (item) => item.id === action.turnId,
+      );
+      if (
+        !pending ||
+        pending.runId !== action.runId ||
+        state.runId !== action.runId
+      )
+        return state;
+      return attachNpcDirectorPlan(state, scenario, pending.id, true);
     }
 
     case 'NPC_REPLY': {
@@ -941,6 +984,28 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       );
       if (!thread) return state;
       const responseMode = action.mode ?? 'ai';
+      if (
+        (responseMode === 'local' &&
+          (pending.responseKind !== 'local' ||
+            !pending.localReply ||
+            action.text.trim() !== pending.localReply.trim())) ||
+        (responseMode !== 'local' && pending.responseKind === 'local')
+      )
+        return state;
+      if (
+        responseMode !== 'local' &&
+        (!pending.directorPlan ||
+          action.baseRevision !== pending.directorPlan.baseRevision ||
+          npcWorldRevision(state) !== pending.directorPlan.baseRevision ||
+          !action.move ||
+          !validateNpcDirectorReply({
+            plan: pending.directorPlan,
+            reply: action.text,
+            move: action.move,
+            factIdsUsed: action.factIdsUsed ?? [],
+          }))
+      )
+        return state;
       const messages = {
         ...state.messages,
         [action.threadId]: (state.messages[action.threadId] ?? []).map(
@@ -1097,12 +1162,23 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const factIds = call.factId
         ? unique([...state.discoveredFactIds, call.factId])
         : state.discoveredFactIds;
+      const npcKnownFactIds =
+        call.agentId && call.factId
+          ? {
+              ...state.npcKnownFactIds,
+              [call.agentId]: unique([
+                ...(state.npcKnownFactIds[call.agentId] ?? []),
+                call.factId,
+              ]),
+            }
+          : state.npcKnownFactIds;
       return advanceStory(
         {
           ...state,
           callIds: unique([...state.callIds, call.id]),
           attemptedCallIds: unique([...state.attemptedCallIds, call.id]),
           discoveredFactIds: factIds,
+          npcKnownFactIds,
         },
         scenario,
         4,
@@ -1132,7 +1208,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const amount = Math.round(action.amount);
       if (
         !request ||
-        !isRequestAvailable(request, state) ||
+        !paymentRequestIsAvailable(request, state) ||
         state.requestStatus[request.id] !== 'pending' ||
         state.pendingNpcTurns.some(
           (pending) => pending.settlementOnReply?.requestId === request.id,
@@ -1205,7 +1281,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       );
       if (
         !request ||
-        !isRequestAvailable(request, state) ||
+        !paymentRequestIsAvailable(request, state) ||
         state.requestStatus[request.id] !== 'pending'
       )
         return state;

@@ -49,7 +49,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  classifyIntent,
   callIsAvailable,
   currentBalance,
   EMPTY_GAME_STATE,
@@ -62,6 +61,10 @@ import {
   visiblePaymentRequests,
 } from '@/game/engine';
 import { collectNpcMemory, getNpcAgent } from '@/game/npc-agents';
+import {
+  npcWorldRevision,
+  validateNpcDirectorReply,
+} from '@/game/npc-director';
 import { selectedPaymentAlternative } from '@/game/payment-arrangements';
 import {
   identityForCall,
@@ -2180,6 +2183,28 @@ export function PhoneGame() {
         return;
       }
 
+      if (
+        pending.responseKind !== 'local' &&
+        (!pending.directorPlan ||
+          pending.directorPlan.baseRevision !== npcWorldRevision(latestState))
+      ) {
+        startedTurnIdsRef.current.delete(pending.id);
+        if ((pending.replanCount ?? 0) >= 2) {
+          dispatch({
+            type: 'NPC_FAILED',
+            runId: pending.runId,
+            turnId: pending.id,
+          });
+        } else {
+          dispatch({
+            type: 'REPLAN_NPC_TURN',
+            runId: pending.runId,
+            turnId: pending.id,
+          });
+        }
+        return;
+      }
+
       if (activePersonaIdsRef.current.has(pending.memoryScopeId)) {
         const retryTimer = window.setTimeout(
           () => runPendingTurn(pending.id),
@@ -2197,8 +2222,9 @@ export function PhoneGame() {
           next.delete(pending.id);
           return next;
         });
-      const releasePersona = () =>
+      const releasePersona = () => {
         activePersonaIdsRef.current.delete(pending.memoryScopeId);
+      };
 
       if (pending.responseKind === 'local' && pending.localReply) {
         const localTimer = window.setTimeout(() => {
@@ -2223,53 +2249,31 @@ export function PhoneGame() {
         return;
       }
 
-      const intent = classifyIntent(latest.text);
-      const sceneState = [
-        ...scenario.scheduledEvents
-          .filter(
-            (event) =>
-              event.threadId === thread.id &&
-              latestState.triggeredEventIds.includes(event.id),
-          )
-          .map((event) => `Đã tới mốc: ${event.notification.body}`),
-        ...visiblePaymentRequests(latestState, scenario)
-          .filter(
-            (request) =>
-              request.sourceThreadId === thread.id ||
-              request.alternatives?.some(
-                (option) =>
-                  option.threadIds.includes(thread.id) &&
-                  option.agentIds.includes(pending.agentId),
-              ),
-          )
-          .map((request) => {
-            const status = latestState.requestStatus[request.id];
-            const alternative = selectedPaymentAlternative(
-              latestState,
-              scenario,
-              request.id,
-            );
-            const statusLabel =
-              status === 'paid'
-                ? 'người chơi đã thanh toán trong ứng dụng'
-                : status === 'arranged' && alternative
-                  ? alternative.label
-                  : status === 'declined'
-                    ? 'người chơi đã từ chối'
-                    : 'đang chờ quyết định';
-            return `${request.title}: ${statusLabel}.`;
-          }),
-      ];
+      const directorPlan = pending.directorPlan;
+      if (!directorPlan) {
+        releasePersona();
+        clearTyping();
+        turnTimerRefs.current.delete(pending.id);
+        startedTurnIdsRef.current.delete(pending.id);
+        dispatch({
+          type: 'REPLAN_NPC_TURN',
+          runId: pending.runId,
+          turnId: pending.id,
+        });
+        return;
+      }
 
       void generateFirebaseNpcReply({
         personaId: pending.memoryScopeId,
         npcName: agent.name,
         playerRole: `${scenario.profile.name}, ${scenario.profile.age}, ${scenario.profile.role}`,
-        roleBrief: `${agent.roleBrief}\nÝ định gần nhất của người chơi: ${intent}.${pending.responseGuidance ? `\n${pending.settlementOnReply ? 'Chỉ dẫn bắt buộc cho lượt này' : 'Nhịp phản hồi'}: ${pending.responseGuidance}` : ''}`,
-        allowedFacts: agent.allowedFacts,
+        roleBrief: agent.roleBrief,
+        plannedMove: directorPlan.move,
+        factCatalog: directorPlan.factCatalog,
+        requiredFactIds: directorPlan.requiredFactIds,
+        requiredCriticalValues: directorPlan.requiredCriticalValues,
         forbiddenClaims: agent.forbiddenClaims,
         voiceExamples: agent.voiceExamples,
-        sceneState,
         participantLabel: pending.senderLabel,
         latestMessage: latest.text,
         history: collectNpcMemory(
@@ -2280,21 +2284,80 @@ export function PhoneGame() {
           latest.id,
         ),
       })
-        .then(({ reply }) => {
+        .then(({ reply, move, factIdsUsed }) => {
           const currentState = stateRef.current;
           const currentScenario = getScenario(currentState.characterId);
+          const currentPending = currentState.pendingNpcTurns.find(
+            (item) => item.id === pending.id,
+          );
+          if (!currentPending || currentPending.runId !== pending.runId) return;
+          if (
+            !currentPending.directorPlan ||
+            currentPending.directorPlan.baseRevision !==
+              npcWorldRevision(currentState)
+          ) {
+            startedTurnIdsRef.current.delete(pending.id);
+            dispatch({
+              type:
+                (currentPending.replanCount ?? 0) >= 2
+                  ? 'NPC_FAILED'
+                  : 'REPLAN_NPC_TURN',
+              runId: pending.runId,
+              turnId: pending.id,
+            });
+            return;
+          }
+          if (
+            !validateNpcDirectorReply({
+              plan: currentPending.directorPlan,
+              reply,
+              move,
+              factIdsUsed,
+            })
+          ) {
+            dispatch({
+              type: 'NPC_FAILED',
+              runId: pending.runId,
+              turnId: pending.id,
+            });
+            return;
+          }
           dispatch({
             type: 'NPC_REPLY',
             runId: pending.runId,
             turnId: pending.id,
             threadId: pending.threadId,
             text: reply,
+            baseRevision: currentPending.directorPlan.baseRevision,
+            move,
+            factIdsUsed,
             time: currentScenario
               ? gameTime(currentScenario, currentState.elapsedMinutes)
               : latest.time,
           });
         })
         .catch((error: unknown) => {
+          const currentState = stateRef.current;
+          const currentPending = currentState.pendingNpcTurns.find(
+            (item) => item.id === pending.id,
+          );
+          if (!currentPending || currentPending.runId !== pending.runId) return;
+          if (
+            currentPending?.directorPlan &&
+            currentPending.directorPlan.baseRevision !==
+              npcWorldRevision(currentState)
+          ) {
+            startedTurnIdsRef.current.delete(pending.id);
+            dispatch({
+              type:
+                (currentPending.replanCount ?? 0) >= 2
+                  ? 'NPC_FAILED'
+                  : 'REPLAN_NPC_TURN',
+              runId: pending.runId,
+              turnId: pending.id,
+            });
+            return;
+          }
           const diagnostic = getFirebaseAiFailureDiagnostic(error);
           console.warn(
             `[Firebase AI] NPC reply failed: kind=${diagnostic.kind} code=${diagnostic.code || 'unknown'} status=${diagnostic.status ?? 'unknown'} detail=${diagnostic.detail || 'unavailable'}`,
@@ -2319,6 +2382,32 @@ export function PhoneGame() {
           clearTyping();
           releasePersona();
           turnTimerRefs.current.delete(pending.id);
+          const recoveryKey = `${pending.id}:recovery`;
+          const recoveryTimer = window.setTimeout(() => {
+            turnTimerRefs.current.delete(recoveryKey);
+            const currentState = stateRef.current;
+            const currentPending = currentState.pendingNpcTurns.find(
+              (item) => item.id === pending.id,
+            );
+            if (
+              !currentPending?.directorPlan ||
+              currentPending.directorPlan.baseRevision !==
+                directorPlan.baseRevision
+            )
+              return;
+            startedTurnIdsRef.current.delete(pending.id);
+            dispatch({
+              type:
+                currentPending.directorPlan.baseRevision !==
+                  npcWorldRevision(currentState) &&
+                (currentPending.replanCount ?? 0) < 2
+                  ? 'REPLAN_NPC_TURN'
+                  : 'NPC_FAILED',
+              runId: pending.runId,
+              turnId: pending.id,
+            });
+          }, 150);
+          turnTimerRefs.current.set(recoveryKey, recoveryTimer);
         });
     };
 

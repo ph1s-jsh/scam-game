@@ -224,20 +224,6 @@ function words(value: string) {
   return value.toLocaleLowerCase('vi').match(/[\p{L}\p{N}]+/gu) ?? [];
 }
 
-function containsAlias(message: string[], alias: string) {
-  const aliasWords = words(alias);
-  return message.some((_, index) =>
-    aliasWords.every((word, offset) => message[index + offset] === word),
-  );
-}
-
-function stableAgentIndex(value: string, length: number) {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1)
-    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
-  return length ? hash % length : 0;
-}
-
 function groupAgentsForThread(
   scenario: ScenarioDefinition,
   thread: ThreadDefinition,
@@ -262,14 +248,35 @@ export function selectNpcAgent(
   scenario: ScenarioDefinition,
   thread: ThreadDefinition,
   latestMessage: string,
+  state?: GameState,
 ): NpcAgentProfile {
   const groupAgents = groupAgentsForThread(scenario, thread);
   if (groupAgents.length) {
     const messageWords = words(latestMessage);
+    const addressed = groupAgents
+      .flatMap((agent, agentOrder) =>
+        agent.aliases.flatMap((alias) => {
+          const aliasWords = words(alias);
+          const index = messageWords.findIndex((_, wordIndex) =>
+            aliasWords.every(
+              (word, offset) => messageWords[wordIndex + offset] === word,
+            ),
+          );
+          return index < 0 ? [] : [{ agent, index, agentOrder }];
+        }),
+      )
+      .sort(
+        (left, right) =>
+          left.index - right.index || left.agentOrder - right.agentOrder,
+      )[0]?.agent;
+    if (addressed) return addressed;
+
+    const lastNpcAgentId = [...(state?.messages[thread.id] ?? [])]
+      .reverse()
+      .find((message) => message.author === 'npc' && message.agentId)?.agentId;
     return (
-      groupAgents.find((agent) =>
-        agent.aliases.some((alias) => containsAlias(messageWords, alias)),
-      ) ?? groupAgents[stableAgentIndex(latestMessage, groupAgents.length)]
+      groupAgents.find((agent) => agent.agentId === lastNpcAgentId) ??
+      groupAgents[0]
     );
   }
 
@@ -297,7 +304,7 @@ export function getNpcAgent(
   return fallback.agentId === agentId ? fallback : null;
 }
 
-function threadSupportsAgent(
+export function threadSupportsAgent(
   scenario: ScenarioDefinition,
   thread: ThreadDefinition,
   agentId: string,
@@ -307,6 +314,16 @@ function threadSupportsAgent(
       (agent) => agent.agentId === agentId,
     );
   return threadBinding(scenario, thread).agentId === agentId;
+}
+
+export function agentIdsForThread(
+  scenario: ScenarioDefinition,
+  thread: ThreadDefinition,
+) {
+  const groupAgents = groupAgentsForThread(scenario, thread);
+  return groupAgents.length
+    ? groupAgents.map((agent) => agent.agentId)
+    : [threadBinding(scenario, thread).agentId];
 }
 
 function messageMinute(time: string) {

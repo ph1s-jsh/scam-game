@@ -17,6 +17,22 @@ function searchable(value: string) {
     .trim();
 }
 
+export function paymentRequestIsAvailable(
+  request: PaymentRequest,
+  state: GameState,
+) {
+  if (request.unlockAfter !== undefined && state.tick < request.unlockAfter)
+    return false;
+  if (
+    request.unlockEventId &&
+    !state.triggeredEventIds.includes(request.unlockEventId)
+  )
+    return false;
+  if (request.unlockRisk && !state.riskFlags.includes(request.unlockRisk))
+    return false;
+  return true;
+}
+
 function explicitlyRejectsCash(value: string) {
   return (
     /\b(khong|dung|chang|chua)\b(?:\s+(?:co|muon|can|nen|duoc|the|tu|minh|phai)){0,4}\s+\b(tra|dua|dong|nop|dung|thanh toan)\b(?:\s+[a-z0-9]+){0,3}\s+\b(tien mat|cod)\b/.test(

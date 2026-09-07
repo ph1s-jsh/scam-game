@@ -14,6 +14,14 @@ export type MessageAuthor = 'player' | 'npc' | 'system';
 
 export type NpcReplyMode = 'ai' | 'fallback' | 'local';
 
+export type NpcDirectorMove =
+  | 'answer'
+  | 'clarify'
+  | 'acknowledge'
+  | 'refuse'
+  | 'confirm'
+  | 'boundary';
+
 export type MessageDeliveryStatus = 'sent' | 'delivered' | 'seen';
 
 export type FactStrength = 'context' | 'strong';
@@ -141,6 +149,7 @@ export interface FactDefinition {
 
 export interface CallDefinition {
   id: string;
+  agentId?: string;
   name: string;
   numberLabel: string;
   initials: string;
@@ -246,6 +255,22 @@ export interface RuntimeTransaction extends BankTransactionSeed {
   requestId?: string;
 }
 
+export interface NpcDirectorFact {
+  id: string;
+  text: string;
+}
+
+export interface NpcDirectorPlan {
+  baseRevision: string;
+  move: NpcDirectorMove;
+  factCatalog: NpcDirectorFact[];
+  requiredFactIds: string[];
+  requiredCriticalValues: string[];
+  allowedCriticalValues: string[];
+  allowedSensitiveTopics: string[];
+  mayClaimPaymentCompleted: boolean;
+}
+
 export interface PendingNpcTurn {
   id: string;
   runId: string;
@@ -262,6 +287,8 @@ export interface PendingNpcTurn {
     requestId: string;
     optionId: string;
   };
+  directorPlan?: NpcDirectorPlan;
+  replanCount?: number;
 }
 
 export interface Debrief {
@@ -299,6 +326,7 @@ export interface GameState {
   transactions: RuntimeTransaction[];
   requestStatus: Record<string, RequestStatus>;
   requestArrangementOptionIds: Record<string, string>;
+  npcKnownFactIds: Record<string, string[]>;
   blockedThreadIds: string[];
   reportedThreadIds: string[];
   riskFlags: RiskFlag[];
@@ -334,8 +362,12 @@ export type GameAction =
       text: string;
       time: string;
       mode?: NpcReplyMode;
+      baseRevision?: string;
+      move?: NpcDirectorMove;
+      factIdsUsed?: string[];
     }
   | { type: 'NPC_FAILED'; runId: string; turnId: string }
+  | { type: 'REPLAN_NPC_TURN'; runId: string; turnId: string }
   | { type: 'CALL'; callId: string; factId?: string }
   | { type: 'DISCOVER_FACT'; factId: string }
   | {

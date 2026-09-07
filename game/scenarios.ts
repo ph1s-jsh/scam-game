@@ -242,6 +242,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
     calls: [
       {
         id: 'hanh-call-an',
+        agentId: 'family.an',
         name: 'An',
         numberLabel: 'Số đã lưu · cháu gái',
         initials: 'A',
@@ -252,6 +253,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
       },
       {
         id: 'hanh-call-bao',
+        agentId: 'family.bao',
         name: 'Bảo',
         numberLabel: 'Số điện thoại đã lưu',
         initials: 'B',
@@ -265,6 +267,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
       },
       {
         id: 'hanh-call-pharmacy',
+        agentId: 'service.minh-tam',
         name: 'Nhà thuốc Minh Tâm',
         numberLabel: 'Số trên hóa đơn cũ',
         initials: 'M',
@@ -765,6 +768,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
     calls: [
       {
         id: 'an-call-hanh',
+        agentId: 'family.hanh',
         name: 'Bà Hạnh',
         numberLabel: 'Số đã lưu · bà ngoại',
         initials: 'H',
@@ -775,6 +779,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
       },
       {
         id: 'an-call-bao',
+        agentId: 'family.bao',
         name: 'Bảo',
         numberLabel: 'Số điện thoại đã lưu',
         initials: 'B',
@@ -787,6 +792,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
       },
       {
         id: 'an-call-recruiter',
+        agentId: 'fraud.recruiter-vy',
         name: 'Chị Vy · Tuyển dụng',
         numberLabel: 'Cuộc gọi qua ứng dụng',
         initials: 'V',
@@ -1360,6 +1366,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
     calls: [
       {
         id: 'bao-call-hanh',
+        agentId: 'family.hanh',
         name: 'Bà Hạnh',
         numberLabel: 'Số đã lưu · đuôi 412',
         initials: 'H',
@@ -1370,6 +1377,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
       },
       {
         id: 'bao-call-an',
+        agentId: 'family.an',
         name: 'An',
         numberLabel: 'Số điện thoại đã lưu',
         initials: 'A',
@@ -1382,6 +1390,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
       },
       {
         id: 'bao-call-game',
+        agentId: 'service.arena-star',
         name: 'Arena Star',
         numberLabel: 'Trung tâm hỗ trợ trong game',
         initials: 'AS',

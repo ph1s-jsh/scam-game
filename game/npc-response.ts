@@ -200,7 +200,7 @@ export function planNpcResponse(input: {
       disposition: 'seen',
       deliveryStatus: 'seen',
       delayMs: 0,
-      advancesStory: true,
+      advancesStory: false,
     };
   }
 
@@ -208,7 +208,7 @@ export function planNpcResponse(input: {
     disposition: 'reply',
     deliveryStatus: 'delivered',
     delayMs: delayBetween(`${turnId}:reply`, 3_000, 5_800) + adjustment,
-    advancesStory: true,
+    advancesStory: false,
     responseKind: 'ai',
     responseGuidance:
       'Trả lời đúng điều người chơi vừa nói; nếu câu quá mơ hồ thì hỏi lại một câu ngắn, không tự mở thêm tình tiết.',

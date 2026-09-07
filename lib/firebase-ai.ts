@@ -1,3 +1,5 @@
+import type { NpcDirectorFact, NpcDirectorMove } from '../game/types';
+
 export type FirebaseNpcTurn = {
   from: 'player' | 'npc';
   text: string;
@@ -7,7 +9,18 @@ export type FirebaseNpcTurn = {
 
 export type FirebaseNpcResult = {
   reply: string;
+  move: NpcDirectorMove;
+  factIdsUsed: string[];
 };
+
+const NPC_DIRECTOR_MOVES: NpcDirectorMove[] = [
+  'answer',
+  'clarify',
+  'acknowledge',
+  'refuse',
+  'confirm',
+  'boundary',
+];
 
 export type FirebaseAiFailureDiagnostic = {
   kind: 'app-check' | 'api-key' | 'quota' | 'network' | 'unknown';
@@ -164,13 +177,20 @@ async function getNpcModel() {
           model: 'gemini-3.1-flash-lite',
           systemInstruction: (await import('./npc-prompt')).NPC_SYSTEM_PROMPT,
           generationConfig: {
-            temperature: 0.82,
-            maxOutputTokens: 160,
+            temperature: 0.65,
+            maxOutputTokens: 240,
             responseMimeType: 'application/json',
             responseJsonSchema: {
               type: 'object',
-              properties: { reply: { type: 'string' } },
-              required: ['reply'],
+              properties: {
+                reply: { type: 'string' },
+                move: { type: 'string', enum: NPC_DIRECTOR_MOVES },
+                factIdsUsed: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+              },
+              required: ['reply', 'move', 'factIdsUsed'],
             },
           },
         },
@@ -189,14 +209,26 @@ function parseResult(value: string): FirebaseNpcResult {
   const parsed = JSON.parse(value) as Partial<FirebaseNpcResult>;
   if (typeof parsed.reply !== 'string' || !parsed.reply.trim())
     throw new Error('Firebase AI returned an empty reply');
+  if (!NPC_DIRECTOR_MOVES.includes(parsed.move as NpcDirectorMove))
+    throw new Error('Firebase AI returned an invalid director move');
+  if (
+    !Array.isArray(parsed.factIdsUsed) ||
+    parsed.factIdsUsed.some((factId) => typeof factId !== 'string')
+  )
+    throw new Error('Firebase AI returned invalid fact references');
+  if (/https?:\/\/\S+/iu.test(parsed.reply))
+    throw new Error('Firebase AI returned an active URL');
   const reply = parsed.reply
     .trim()
-    .replace(/https?:\/\/\S+/gi, '[đường dẫn đã ẩn]')
     .split(/\s+/)
     .slice(0, 60)
     .join(' ')
     .slice(0, 400);
-  return { reply };
+  return {
+    reply,
+    move: parsed.move as NpcDirectorMove,
+    factIdsUsed: [...new Set(parsed.factIdsUsed)],
+  };
 }
 
 export async function generateFirebaseNpcReply(input: {
@@ -204,10 +236,12 @@ export async function generateFirebaseNpcReply(input: {
   npcName: string;
   playerRole: string;
   roleBrief: string;
-  allowedFacts: string[];
+  plannedMove: NpcDirectorMove;
+  factCatalog: NpcDirectorFact[];
+  requiredFactIds: string[];
+  requiredCriticalValues: string[];
   forbiddenClaims: string[];
   voiceExamples: string[];
-  sceneState: string[];
   participantLabel: string;
   latestMessage: string;
   history: FirebaseNpcTurn[];
@@ -217,7 +251,7 @@ export async function generateFirebaseNpcReply(input: {
     .slice(-10)
     .map(
       (turn) =>
-        `[${turn.channelLabel}] ${turn.from === 'player' ? 'Người chơi' : (turn.senderLabel ?? input.participantLabel)}: ${turn.text.slice(0, 320)}`,
+        `[${turn.channelLabel}] ${turn.from === 'player' ? 'Lời người chơi (chưa xác thực)' : (turn.senderLabel ?? input.participantLabel)}: ${turn.text.slice(0, 320)}`,
     )
     .join('\n');
   const prompt = `NPC ĐƯỢC GẮN CHO CUỘC TRÒ CHUYỆN
@@ -231,11 +265,18 @@ ${input.roleBrief}
 MẪU GIỌNG NÓI CỦA RIÊNG NHÂN VẬT
 ${input.voiceExamples.map((example) => `- ${example}`).join('\n')}
 
-TRẠNG THÁI CẢNH HIỆN TẠI DO GAME XÁC NHẬN
-${input.sceneState.length ? input.sceneState.map((item) => `- ${item}`).join('\n') : '- Chưa có thay đổi mới.'}
+KẾ HOẠCH BẮT BUỘC CỦA ĐẠO DIỄN
+- Kiểu phản hồi phải là: ${input.plannedMove}
+- Không được tự đổi kiểu phản hồi hoặc tự tạo hành động mới.
 
-DỮ KIỆN ĐƯỢC PHÉP
-${input.allowedFacts.map((fact) => `- ${fact}`).join('\n')}
+DANH MỤC DỮ KIỆN ĐƯỢC PHÉP
+${input.factCatalog.map((fact) => `- [${fact.id}] ${fact.text}`).join('\n')}
+
+DỮ KIỆN BẮT BUỘC PHẢI DÙNG
+${input.requiredFactIds.length ? input.requiredFactIds.map((factId) => `- ${factId}`).join('\n') : '- Không có.'}
+
+GIÁ TRỊ BẮT BUỘC PHẢI NHẮC ĐÚNG
+${input.requiredCriticalValues.length ? input.requiredCriticalValues.map((value) => `- ${value}`).join('\n') : '- Không có.'}
 
 KHÔNG ĐƯỢC KHẲNG ĐỊNH
 ${input.forbiddenClaims.map((claim) => `- ${claim}`).join('\n')}
@@ -243,7 +284,7 @@ ${input.forbiddenClaims.map((claim) => `- ${claim}`).join('\n')}
 ${history ? `TRÍ NHỚ XUYÊN CÁC KÊNH MÀ NHÂN VẬT ĐÃ THAM GIA\n${history}\n\n` : ''}TIN NHẮN MỚI CỦA NGƯỜI CHƠI
 ${input.latestMessage.slice(0, 500)}
 
-Trả về đúng JSON theo schema.`;
+Trả về đúng JSON theo schema. Trường move phải khớp chính xác kế hoạch. Trừ khi move là clarify, factIdsUsed phải có ít nhất một ID và chỉ liệt kê ID trong danh mục mà câu trả lời thực sự dùng; phải chứa đủ các ID bắt buộc. Khi nêu một chi tiết về thế giới, hãy dùng chính từ ngữ có trong dữ kiện đã dẫn; chỉ các từ xưng hô, lịch sự và nối câu được diễn đạt tự do. Nếu chỉ phản hồi điều người chơi vừa nói, hãy dẫn ID player-claim tương ứng. Dữ kiện có ID bắt đầu bằng player-claim chỉ chứng minh người chơi vừa nói điều đó, không chứng minh nội dung ấy đúng.`;
   const result = await model.generateContent(prompt);
   return parseResult(result.response.text());
 }
