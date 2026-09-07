@@ -148,6 +148,7 @@ const DIALOGUE_ONLY_WORDS = new Set([
   'chac',
   'chua',
   'dau',
+  'day',
   'dong',
   'dung',
   'giai',
@@ -244,20 +245,36 @@ function groundingWords(value: string) {
     .filter((word) => word.length >= 2 && !GROUNDING_STOP_WORDS.has(word));
 }
 
+function hasFactualNegation(value: string) {
+  return /\b(khong|chua|chang|phu nhan)\b/.test(searchable(value));
+}
+
 function factGroundsReply(reply: string, facts: NpcDirectorFact[]) {
   const replyWords = unique(groundingWords(reply));
   if (!replyWords.length) return true;
-  const factWords = new Set(facts.flatMap((fact) => groundingWords(fact.text)));
+  const replyIsNegated = hasFactualNegation(reply);
+  const compatibleFacts = facts.filter(
+    (fact) => hasFactualNegation(fact.text) === replyIsNegated,
+  );
+  const factWords = new Set(
+    compatibleFacts.flatMap((fact) => groundingWords(fact.text)),
+  );
+  const factNames = new Set(
+    compatibleFacts.flatMap((fact) => namedTokens(fact.text)),
+  );
   const worldWords = replyWords.filter(
     (word) => !DIALOGUE_ONLY_WORDS.has(word),
   );
   if (!worldWords.length) return true;
+  if (!compatibleFacts.length) return false;
   const shared = worldWords.filter((word) => factWords.has(word));
   const unsupported = worldWords.filter((word) => !factWords.has(word));
   return (
     unsupported.length === 0 &&
     (shared.length >= 2 ||
-      shared.some((word) => word.length >= 7 || /\d/.test(word)))
+      shared.some(
+        (word) => word.length >= 7 || /\d/.test(word) || factNames.has(word),
+      ))
   );
 }
 
@@ -266,12 +283,8 @@ function isDialogueOnlyReply(reply: string) {
 }
 
 function factMatchesMessage(message: string, factText: string) {
-  const messagePolarity = /\b(khong|chua|chang|phu nhan)\b/.test(
-    searchable(message),
-  );
-  const factPolarity = /\b(khong|chua|chang|phu nhan)\b/.test(
-    searchable(factText),
-  );
+  const messagePolarity = hasFactualNegation(message);
+  const factPolarity = hasFactualNegation(factText);
   if (messagePolarity !== factPolarity) return false;
   const messageWords = new Set(words(message));
   const factWords = unique(words(factText));
@@ -403,8 +416,9 @@ export function createNpcDirectorPlan(
   addFact(
     factCatalog,
     `identity:${agent.agentId}`,
-    `Bạn là ${agent.name}. ${agent.roleBrief}`,
+    `Tên nhân vật của bạn là ${agent.name}.`,
   );
+  addFact(factCatalog, `role:${agent.agentId}`, agent.roleBrief);
   agent.allowedFacts.forEach((fact, index) =>
     addFact(factCatalog, `profile:${agent.agentId}:${index}`, fact),
   );
@@ -587,9 +601,12 @@ export function validateNpcDirectorReply(input: {
   const admitsUncertainty =
     /\b(khong biet|khong ro|khong nho|chua biet)\b/.test(normalizedReply);
   const makesAssertion = !isDialogueOnlyReply(reply);
+  const requiresGrounding =
+    makesAssertion ||
+    move === 'confirm' ||
+    (move === 'answer' && !admitsUncertainty);
   if (
-    !admitsUncertainty &&
-    (move === 'answer' || move === 'confirm' || makesAssertion) &&
+    requiresGrounding &&
     (!trustedUsedFacts.length || !factGroundsReply(reply, trustedUsedFacts))
   )
     return false;

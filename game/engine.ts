@@ -984,6 +984,16 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       );
       if (!thread) return state;
       const responseMode = action.mode ?? 'ai';
+      const settlement = pending.settlementOnReply
+        ? validatedPendingAlternative(state, scenario, pending)
+        : null;
+      if (pending.settlementOnReply && !settlement)
+        return {
+          ...state,
+          pendingNpcTurns: state.pendingNpcTurns.filter(
+            (item) => item.id !== pending.id,
+          ),
+        };
       if (
         (responseMode === 'local' &&
           (pending.responseKind !== 'local' ||
@@ -1088,6 +1098,13 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           ? 'ordinary'
           : classifiedIntent;
       const settlement = validatedPendingAlternative(state, scenario, pending);
+      if (pending.settlementOnReply && !settlement)
+        return {
+          ...state,
+          pendingNpcTurns: state.pendingNpcTurns.filter(
+            (item) => item.id !== pending.id,
+          ),
+        };
       let next = appendMessage(
         {
           ...state,

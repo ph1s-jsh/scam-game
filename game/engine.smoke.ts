@@ -357,7 +357,7 @@ function reachAnTask(runId = 'an-task') {
   assert.equal(state.pendingNpcTurns[0]?.directorPlan?.move, 'answer');
   assert.ok(
     state.pendingNpcTurns[0]?.directorPlan?.requiredFactIds.includes(
-      'identity:family.an',
+      'role:family.an',
     ),
   );
   state = replyPending(state, 'Dạ con đang ở lớp đến 20 giờ.');
@@ -574,6 +574,15 @@ function reachAnTask(runId = 'an-task') {
     validateNpcDirectorReply({
       plan,
       reply: 'Hóa đơn bị hủy.',
+      move: plan.move,
+      factIdsUsed: plan.requiredFactIds,
+    }),
+    false,
+  );
+  assert.equal(
+    validateNpcDirectorReply({
+      plan,
+      reply: 'Hóa đơn không phải 219.000đ, mã P203-08 đó con.',
       move: plan.move,
       factIdsUsed: plan.requiredFactIds,
     }),
@@ -905,6 +914,27 @@ function reachAnTask(runId = 'an-task') {
     'local',
   );
   assert.strictEqual(gameReducer(contact, wrongRoleReply), contact);
+  const declinedWhileWaiting = gameReducer(
+    contact,
+    decline('hanh-pay-pharmacy'),
+  );
+  const cancelledAcceptance = gameReducer(
+    declinedWhileWaiting,
+    replyAction(
+      declinedWhileWaiting,
+      declinedWhileWaiting.pendingNpcTurns[0]?.localReply ?? '',
+      'local',
+    ),
+  );
+  assert.equal(cancelledAcceptance.pendingNpcTurns.length, 0);
+  assert.equal(
+    cancelledAcceptance.messages['hanh-an-real'].at(-1)?.author,
+    'player',
+  );
+  assert.equal(
+    cancelledAcceptance.requestStatus['hanh-pay-pharmacy'],
+    'declined',
+  );
   const contactReply = replyAction(
     contact,
     contactPending?.localReply ?? '',
