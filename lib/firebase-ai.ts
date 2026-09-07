@@ -265,9 +265,10 @@ ${input.roleBrief}
 MẪU GIỌNG NÓI CỦA RIÊNG NHÂN VẬT
 ${input.voiceExamples.map((example) => `- ${example}`).join('\n')}
 
-KẾ HOẠCH BẮT BUỘC CỦA ĐẠO DIỄN
-- Kiểu phản hồi phải là: ${input.plannedMove}
-- Không được tự đổi kiểu phản hồi hoặc tự tạo hành động mới.
+ĐỊNH HƯỚNG CỦA ĐẠO DIỄN
+- Kiểu phản hồi dự kiến là: ${input.plannedMove}
+- Nếu đây là hội thoại thông thường nhưng lời người chơi mơ hồ, bạn có thể chọn clarify; nếu cần từ chối thì chọn refuse. Với confirm hoặc boundary, phải giữ đúng kiểu đã định.
+- Bạn chỉ viết lời thoại. Không tự tạo hành động hay thay đổi trạng thái game.
 
 DANH MỤC DỮ KIỆN ĐƯỢC PHÉP
 ${input.factCatalog.map((fact) => `- [${fact.id}] ${fact.text}`).join('\n')}
@@ -281,10 +282,10 @@ ${input.requiredCriticalValues.length ? input.requiredCriticalValues.map((value)
 KHÔNG ĐƯỢC KHẲNG ĐỊNH
 ${input.forbiddenClaims.map((claim) => `- ${claim}`).join('\n')}
 
-${history ? `TRÍ NHỚ XUYÊN CÁC KÊNH MÀ NHÂN VẬT ĐÃ THAM GIA\n${history}\n\n` : ''}TIN NHẮN MỚI CỦA NGƯỜI CHƠI
+${history ? `TRÍ NHỚ RIÊNG CỦA NHÂN VẬT\nChỉ gồm các cuộc trò chuyện mà chính nhân vật này đã tham gia. Nhân vật không biết nội dung ở bất kỳ kênh riêng nào không xuất hiện dưới đây. Lời của người khác chỉ là điều nhân vật đã đọc, không tự động trở thành sự thật.\n${history}\n\n` : ''}TIN NHẮN MỚI CỦA NGƯỜI CHƠI
 ${input.latestMessage.slice(0, 500)}
 
-Trả về đúng JSON theo schema. Trường move phải khớp chính xác kế hoạch. Trừ khi move là clarify, factIdsUsed phải có ít nhất một ID và chỉ liệt kê ID trong danh mục mà câu trả lời thực sự dùng; phải chứa đủ các ID bắt buộc. Khi nêu một chi tiết về thế giới, hãy dùng chính từ ngữ có trong dữ kiện đã dẫn; chỉ các từ xưng hô, lịch sự và nối câu được diễn đạt tự do. Nếu chỉ phản hồi điều người chơi vừa nói, hãy dẫn ID player-claim tương ứng. Dữ kiện có ID bắt đầu bằng player-claim chỉ chứng minh người chơi vừa nói điều đó, không chứng minh nội dung ấy đúng.`;
+Trả về đúng JSON theo schema. factIdsUsed là dấu vết kiểm tra: chỉ liệt kê ID trong danh mục mà câu trả lời thực sự dùng và phải chứa đủ ID bắt buộc; có thể là [] nếu chỉ đang hỏi lại hoặc phản hồi xã giao. Hãy diễn đạt tự nhiên bằng giọng riêng của nhân vật, nhưng giữ nguyên mọi số tiền, mã, tên riêng và trạng thái quan trọng. Nếu chỉ phản hồi điều người chơi vừa nói, có thể dẫn ID player-claim tương ứng. Dữ kiện có ID bắt đầu bằng player-claim chỉ chứng minh người chơi vừa nói điều đó, không chứng minh nội dung ấy đúng.`;
   const result = await model.generateContent(prompt);
   return parseResult(result.response.text());
 }

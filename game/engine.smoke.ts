@@ -388,6 +388,14 @@ function reachAnTask(runId = 'an-task') {
     fakeState.messages['hanh-an-new'].at(-1)?.id ?? '',
   );
   assert.ok(fakeMemory.every((turn) => turn.channelLabel === 'An · số mới'));
+  const realAnMemory = collectNpcMemory(
+    fakeState,
+    scenario,
+    'family.an',
+    'hanh-an-real',
+    '',
+  );
+  assert.ok(realAnMemory.every((turn) => turn.channelLabel !== 'An · số mới'));
 }
 
 // The director selects a group speaker deterministically and keeps a natural turn owner.
@@ -464,6 +472,106 @@ function reachAnTask(runId = 'an-task') {
   assert.equal(
     shorthandQuestion.pendingNpcTurns[0]?.directorPlan?.move,
     'answer',
+  );
+
+  const delegatedPayment = send(
+    base,
+    'hanh-an-real',
+    'ý là con tự chuyển khoản giúp cho bà được không',
+    'director-delegated-payment',
+  );
+  const delegatedPlan = delegatedPayment.pendingNpcTurns[0]?.directorPlan;
+  assert.ok(delegatedPlan);
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: delegatedPlan,
+      reply:
+        'Dạ, ý bà là muốn con thanh toán hộ đơn thuốc rồi bà nhận thuốc giúp con, đúng không ạ?',
+      move: 'clarify',
+      factIdsUsed: [],
+    }),
+    true,
+  );
+
+  const clarifiedDelegation = send(
+    base,
+    'hanh-an-real',
+    'bà lớn tuổi rồi không chuyển được, con chuyển cho người ta trước rồi bà nhận giúp',
+    'director-clarified-delegation',
+  );
+  const clarifiedPlan = clarifiedDelegation.pendingNpcTurns[0]?.directorPlan;
+  assert.ok(clarifiedPlan);
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: clarifiedPlan,
+      reply:
+        'Dạ con hiểu rồi. Bà muốn con thanh toán trước, còn bà nhận thuốc giúp con đúng không ạ?',
+      move: 'clarify',
+      factIdsUsed: [],
+    }),
+    true,
+  );
+
+  const groupKnowledge = send(
+    base,
+    'hanh-family',
+    'An đang làm gì vậy?',
+    'director-subject-scope',
+  ).pendingNpcTurns[0]?.directorPlan;
+  assert.ok(groupKnowledge);
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: groupKnowledge,
+      reply: 'An đang ở lớp đến 20 giờ.',
+      move: 'answer',
+      factIdsUsed: [],
+    }),
+    true,
+  );
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: groupKnowledge,
+      reply: 'Bảo đang ở lớp đến 20 giờ.',
+      move: 'answer',
+      factIdsUsed: [],
+    }),
+    false,
+  );
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: groupKnowledge,
+      reply: 'bảo đang ở lớp đến 20 giờ.',
+      move: 'answer',
+      factIdsUsed: [],
+    }),
+    false,
+  );
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: groupKnowledge,
+      reply: 'Hoa đang ở lớp đến 20 giờ.',
+      move: 'answer',
+      factIdsUsed: [],
+    }),
+    false,
+  );
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: groupKnowledge,
+      reply: 'Để con hỏi Bảo rồi báo bà nha.',
+      move: 'acknowledge',
+      factIdsUsed: [],
+    }),
+    true,
+  );
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: groupKnowledge,
+      reply: 'An đã chuyển tiền cho bà rồi.',
+      move: 'answer',
+      factIdsUsed: [],
+    }),
+    false,
   );
 
   const contextualQuestion = send(
@@ -608,6 +716,57 @@ function reachAnTask(runId = 'an-task') {
   );
 }
 
+// Raw conversation memory is private unless an NPC actually observed the channel.
+{
+  const scenario = getScenario('hanh');
+  assert.ok(scenario);
+  const privateState = send(
+    start('hanh', 'director-private-memory'),
+    'hanh-an-real',
+    'Con đừng kể ai: bà để chìa khóa dưới chậu cây.',
+    'director-private-memory-turn',
+  );
+  const anMemory = collectNpcMemory(
+    privateState,
+    scenario,
+    'family.an',
+    'hanh-an-real',
+    '',
+  );
+  const pharmacyMemory = collectNpcMemory(
+    privateState,
+    scenario,
+    'service.minh-tam',
+    'hanh-pharmacy',
+    '',
+  );
+  assert.ok(anMemory.some((turn) => turn.text.includes('chìa khóa')));
+  assert.ok(
+    !collectNpcMemory(
+      privateState,
+      scenario,
+      'family.bao',
+      'hanh-family',
+      '',
+    ).some((turn) => turn.text.includes('chìa khóa')),
+  );
+  assert.ok(!pharmacyMemory.some((turn) => turn.text.includes('chìa khóa')));
+
+  const groupState = send(
+    start('hanh', 'director-shared-memory'),
+    'hanh-family',
+    'Cả nhà tối nay nhớ gọi cho bà nhé.',
+    'director-shared-memory-turn',
+  );
+  for (const agentId of ['family.an', 'family.bao']) {
+    assert.ok(
+      collectNpcMemory(groupState, scenario, agentId, 'hanh-family', '').some(
+        (turn) => turn.text.includes('Cả nhà tối nay'),
+      ),
+    );
+  }
+}
+
 // AI output is accepted only for the same world revision and within its fact contract.
 {
   let state = send(
@@ -655,6 +814,10 @@ function reachAnTask(runId = 'an-task') {
       factIdsUsed: [],
     }),
     false,
+  );
+  assert.strictEqual(
+    gameReducer(state, replyAction(state, 'Bà đã thanh toán xong rồi con.')),
+    state,
   );
   assert.equal(
     validateNpcDirectorReply({
