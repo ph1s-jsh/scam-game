@@ -13,6 +13,7 @@ import { npcWorldRevision, validateNpcDirectorReply } from './npc-director';
 import { findPaymentArrangement } from './payment-arrangements';
 import { loadGameState } from './persistence';
 import { getScenario } from './scenarios';
+import { getFirebaseAiFailureDiagnostic } from '../lib/firebase-ai';
 import type {
   CharacterId,
   GameAction,
@@ -21,6 +22,22 @@ import type {
 } from './types';
 
 const characterIds: CharacterId[] = ['hanh', 'an', 'bao'];
+
+assert.equal(
+  getFirebaseAiFailureDiagnostic({
+    code: 'appCheck/fetch-status-error',
+    message: 'AppCheck: reCAPTCHA attestation failed.',
+  }).kind,
+  'app-check',
+);
+assert.equal(
+  getFirebaseAiFailureDiagnostic({
+    code: 'AI/fetch-error',
+    message: 'Error fetching: [400 Bad Request] Unsupported parameter.',
+    customErrorData: { status: 400 },
+  }).kind,
+  'configuration',
+);
 
 const act = (state: GameState, ...actions: GameAction[]) =>
   actions.reduce(gameReducer, state);

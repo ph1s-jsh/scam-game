@@ -23,7 +23,13 @@ const NPC_DIRECTOR_MOVES: NpcDirectorMove[] = [
 ];
 
 export type FirebaseAiFailureDiagnostic = {
-  kind: 'app-check' | 'api-key' | 'quota' | 'network' | 'unknown';
+  kind:
+    | 'app-check'
+    | 'api-key'
+    | 'configuration'
+    | 'quota'
+    | 'network'
+    | 'unknown';
   code: string;
   status?: number;
   detail: string;
@@ -107,8 +113,13 @@ export function getFirebaseAiFailureDiagnostic(
         : undefined;
 
   let kind: FirebaseAiFailureDiagnostic['kind'] = 'unknown';
-  if ((status === 401 || status === 403) && /app[\s-]?check/.test(message)) {
+  if (
+    /app[\s-]?check|recaptcha/.test(message) ||
+    code.toLocaleLowerCase('en-US').startsWith('appcheck/')
+  ) {
     kind = 'app-check';
+  } else if (status === 400) {
+    kind = 'configuration';
   } else if (status === 403 && /api key|blocked/.test(message)) {
     kind = 'api-key';
   } else if (status === 429) {
@@ -127,10 +138,15 @@ export function getFirebaseAiFailureDiagnostic(
   return { kind, code, detail, ...(status === undefined ? {} : { status }) };
 }
 
-let modelPromise: Promise<import('firebase/ai').GenerativeModel> | null = null;
+type AppCheckTokenMode = 'limited' | 'session';
 
-async function getNpcModel() {
-  if (!modelPromise) {
+const modelPromises: Partial<
+  Record<AppCheckTokenMode, Promise<import('firebase/ai').GenerativeModel>>
+> = {};
+let preferredAppCheckTokenMode: AppCheckTokenMode = 'limited';
+
+async function getNpcModel(tokenMode: AppCheckTokenMode) {
+  if (!modelPromises[tokenMode]) {
     const pendingModel = (async () => {
       if (typeof window === 'undefined')
         throw new Error('Firebase AI Logic must run in a browser');
@@ -169,7 +185,7 @@ async function getNpcModel() {
       }
       const ai = getAI(app, {
         backend: new GoogleAIBackend(),
-        useLimitedUseAppCheckTokens: true,
+        useLimitedUseAppCheckTokens: tokenMode === 'limited',
       });
       return getGenerativeModel(
         ai,
@@ -177,7 +193,6 @@ async function getNpcModel() {
           model: 'gemini-3.1-flash-lite',
           systemInstruction: (await import('./npc-prompt')).NPC_SYSTEM_PROMPT,
           generationConfig: {
-            temperature: 0.65,
             maxOutputTokens: 240,
             responseMimeType: 'application/json',
             responseJsonSchema: {
@@ -197,12 +212,13 @@ async function getNpcModel() {
         { timeout: 30_000 },
       );
     })();
-    modelPromise = pendingModel;
+    modelPromises[tokenMode] = pendingModel;
     void pendingModel.catch(() => {
-      if (modelPromise === pendingModel) modelPromise = null;
+      if (modelPromises[tokenMode] === pendingModel)
+        delete modelPromises[tokenMode];
     });
   }
-  return modelPromise;
+  return modelPromises[tokenMode];
 }
 
 function parseResult(value: string): FirebaseNpcResult {
@@ -246,7 +262,6 @@ export async function generateFirebaseNpcReply(input: {
   latestMessage: string;
   history: FirebaseNpcTurn[];
 }) {
-  const model = await getNpcModel();
   const history = input.history
     .slice(-10)
     .map(
@@ -286,6 +301,26 @@ ${history ? `TRÍ NHỚ RIÊNG CỦA NHÂN VẬT\nChỉ gồm các cuộc trò c
 ${input.latestMessage.slice(0, 500)}
 
 Trả về đúng JSON theo schema. factIdsUsed là dấu vết kiểm tra: chỉ liệt kê ID trong danh mục mà câu trả lời thực sự dùng và phải chứa đủ ID bắt buộc; có thể là [] nếu chỉ đang hỏi lại hoặc phản hồi xã giao. Hãy diễn đạt tự nhiên bằng giọng riêng của nhân vật, nhưng giữ nguyên mọi số tiền, mã, tên riêng và trạng thái quan trọng. Nếu chỉ phản hồi điều người chơi vừa nói, có thể dẫn ID player-claim tương ứng. Dữ kiện có ID bắt đầu bằng player-claim chỉ chứng minh người chơi vừa nói điều đó, không chứng minh nội dung ấy đúng.`;
-  const result = await model.generateContent(prompt);
-  return parseResult(result.response.text());
+
+  const generateWithTokenMode = async (tokenMode: AppCheckTokenMode) => {
+    const model = await getNpcModel(tokenMode);
+    const result = await model.generateContent(prompt);
+    return parseResult(result.response.text());
+  };
+
+  const initialMode = preferredAppCheckTokenMode;
+  try {
+    return await generateWithTokenMode(initialMode);
+  } catch (error) {
+    if (getFirebaseAiFailureDiagnostic(error).kind !== 'app-check') throw error;
+
+    // Some projects enforce baseline App Check but not replay protection.
+    // If a browser cannot mint a limited-use token, retry once with the
+    // normal App Check session token. Both paths remain attested by App Check.
+    const alternateMode: AppCheckTokenMode =
+      initialMode === 'limited' ? 'session' : 'limited';
+    const result = await generateWithTokenMode(alternateMode);
+    preferredAppCheckTokenMode = alternateMode;
+    return result;
+  }
 }
