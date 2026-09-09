@@ -567,7 +567,9 @@ function knowledgeBoundaryReplyStaysNarrow(value: string) {
     const normalized = searchable(clause);
     return (
       /^(?:da|vang|u|a)$/.test(normalized) ||
-      /^(?:da\s+)?khong(?:\s+a)?$/.test(normalized) ||
+      /^(?:da\s+)?khong(?:\s+dau)?(?:\s+(?:ba|ban|co|chu|anh|chi|em)\s+oi)?(?:\s+a)?$/.test(
+        normalized,
+      ) ||
       /\b(?:khong|chua)\b(?:\s+[a-z0-9]+){0,8}\s+\b(?:biet|ro|doc|xem|thay|nghe|duoc ke)\b/.test(
         normalized,
       ) ||
