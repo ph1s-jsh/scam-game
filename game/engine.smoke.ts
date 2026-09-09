@@ -761,6 +761,11 @@ function reachAnTask(runId = 'an-task') {
       factId.startsWith('dialogue:'),
     ),
   );
+  assert.ok(
+    !privateRecallPlan.factCatalog.some((fact) =>
+      /186\.000|thanh toán|tài khoản|tiền thuốc/i.test(fact.text),
+    ),
+  );
   assert.ok(!privateRecallPlan.allowedSensitiveTopics.includes('payment'));
   const privateReadPlan = send(
     base,

@@ -896,6 +896,17 @@ export function createNpcDirectorPlan(
       'Bạn không nhìn thấy và không biết nội dung cuộc trò chuyện riêng giữa người chơi với nhân vật khác. Chỉ nói rằng mình không biết; không suy đoán nội dung và không chuyển sang chủ đề khác.',
     );
 
+  if (asksAboutAnotherNpc) {
+    const boundaryFacts = factCatalog.filter(
+      (fact) =>
+        fact.id === `identity:${agent.agentId}` ||
+        fact.id === `role:${agent.agentId}` ||
+        fact.id === `player-claim:${latestMessage.id}` ||
+        fact.id === knowledgeBoundaryFactId,
+    );
+    factCatalog.splice(0, factCatalog.length, ...boundaryFacts);
+  }
+
   const trustedCorpus = factCatalog
     .filter((fact) => !fact.id.startsWith('player-claim:'))
     .map((fact) => fact.text)

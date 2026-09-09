@@ -273,6 +273,9 @@ export async function generateFirebaseNpcReply(input: {
         `[${turn.channelLabel}] ${turn.from === 'player' ? 'Lời người chơi (chưa xác thực)' : (turn.senderLabel ?? input.participantLabel)}: ${turn.text.slice(0, 320)}`,
     )
     .join('\n');
+  const privateKnowledgeBoundary = input.requiredFactIds.some((factId) =>
+    factId.startsWith('knowledge-boundary:'),
+  );
   const prompt = `NPC ĐƯỢC GẮN CHO CUỘC TRÒ CHUYỆN
 Mã nhân vật: ${input.personaId}
 Tên hiển thị: ${input.npcName}
@@ -288,6 +291,7 @@ ${input.voiceExamples.map((example) => `- ${example}`).join('\n')}
 - Kiểu phản hồi dự kiến là: ${input.plannedMove}
 - Nếu đây là hội thoại thông thường nhưng lời người chơi mơ hồ, bạn có thể chọn clarify; nếu cần từ chối thì chọn refuse. Với confirm hoặc boundary, phải giữ đúng kiểu đã định.
 - Bạn chỉ viết lời thoại. Không tự tạo hành động hay thay đổi trạng thái game.
+${privateKnowledgeBoundary ? '- Lượt này chỉ trả lời rằng bạn không đọc/không biết cuộc trò chuyện riêng được hỏi tới. Không nhắc thuốc, tiền, tài khoản, mã, liên kết hoặc bất kỳ yêu cầu cũ nào.\n' : ''}
 
 DANH MỤC DỮ KIỆN ĐƯỢC PHÉP
 ${input.factCatalog.map((fact) => `- [${fact.id}] ${fact.text}`).join('\n')}
