@@ -565,7 +565,13 @@ function knowledgeBoundaryReplyStaysNarrow(value: string) {
         normalized,
       ) ||
       /\b(?:khong|chua)\s+(?:biet|ro|doc|xem|thay|nghe)\b/.test(normalized) ||
-      /\b(?:ke lai|noi ro|noi lai)\b/.test(normalized)
+      /\bchi\b(?:\s+[a-z0-9]+){0,8}\s+\b(?:biet|doc|xem|thay|nghe)\b/.test(
+        normalized,
+      ) ||
+      (/\b(?:tin nhan|tro chuyen|noi dung)\b/.test(normalized) &&
+        /\b(?:rieng|rieng tu|tach biet)\b/.test(normalized) &&
+        /\b(?:biet|doc|xem|thay|nghe)\b/.test(normalized)) ||
+      /\b(?:ke lai|noi ro|noi lai|hoi lai)\b/.test(normalized)
     );
   });
 }
@@ -1036,9 +1042,12 @@ export function validateNpcDirectorReply(input: {
   );
   const admitsPrivateBoundary =
     knowledgeBoundaryFacts.length > 0 &&
-    /\b(?:khong|chua)\b(?:\s+[a-z0-9]+){0,5}\s+\b(?:doc|xem|thay|nghe)\b/.test(
+    (/\b(?:khong|chua)\b(?:\s+[a-z0-9]+){0,5}\s+\b(?:doc|xem|thay|nghe)\b/.test(
       normalizedReply,
-    );
+    ) ||
+      (/\bkhong\b/.test(normalizedReply) &&
+        /\b(?:tin nhan|tro chuyen|noi dung)\b/.test(normalizedReply) &&
+        /\b(?:rieng|rieng tu|tach biet)\b/.test(normalizedReply)));
   const safelyAdmitsUncertainty = admitsUncertainty || admitsPrivateBoundary;
   if (
     knowledgeBoundaryFacts.length &&

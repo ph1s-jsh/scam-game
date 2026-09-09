@@ -807,6 +807,16 @@ function reachAnTask(runId = 'an-task') {
     validateNpcDirectorReply({
       plan: privateRecallPlan,
       reply:
+        'Dạ không ạ, con chỉ xem được tin nhắn giữa con với bà thôi, không thấy được tin nhắn riêng của bà với Bảo đâu ạ.',
+      move: 'answer',
+      factIdsUsed: privateRecallPlan.requiredFactIds,
+    }),
+    true,
+  );
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: privateRecallPlan,
+      reply:
         'Dạ không ạ. Bà gửi thông tin tài khoản để con thanh toán 186.000đ tiền thuốc nhé.',
       move: 'answer',
       factIdsUsed: [],
