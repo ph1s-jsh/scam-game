@@ -87,7 +87,11 @@ function appendMessage(
       ...state.messages,
       [threadId]: [
         ...(state.messages[threadId] ?? []),
-        { ...message, id: message.id ?? `${state.runId}-message-${sequence}` },
+        {
+          ...message,
+          id: message.id ?? `${state.runId}-message-${sequence}`,
+          sequence,
+        },
       ],
     },
   };
@@ -958,12 +962,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                   delayMs: settlementOnReply
                     ? Math.max(plan.delayMs, 6_500)
                     : plan.delayMs,
+                  // A recognized payment arrangement remains deterministic in
+                  // the reducer, while the NPC's acknowledgement is still
+                  // generated in character. The configured copy is reserved
+                  // for NPC_FAILED when the AI genuinely cannot answer.
                   responseKind: settlementOnReply
-                    ? 'local'
+                    ? 'ai'
                     : (plan.responseKind ?? 'ai'),
-                  localReply:
-                    settlementConfiguration?.option.fallbackReply ??
-                    plan.localReply,
+                  localReply: settlementOnReply ? undefined : plan.localReply,
                   responseGuidance:
                     settlementConfiguration?.option.npcGuidance ??
                     plan.responseGuidance,
@@ -1053,7 +1059,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         responseMode !== 'local' &&
         (!pending.directorPlan ||
           action.baseRevision !== pending.directorPlan.baseRevision ||
-          npcWorldRevision(state) !== pending.directorPlan.baseRevision ||
+          npcWorldRevision(state, scenario, pending) !==
+            pending.directorPlan.baseRevision ||
           !action.move ||
           !validateNpcDirectorReply({
             plan: pending.directorPlan,

@@ -68,7 +68,10 @@ function matchesTrustedContactCash(value: string) {
       value,
     );
   const rejectsContactPayment =
-    /\b(khong|dung|chang|chua)\b(?:\s+[a-z0-9]+){0,4}\s+\b(chuyen|chuyen khoan|thanh toan|dong|tra)\b/.test(
+    /\b(an|con|chau)\b(?:\s+[a-z0-9]+){0,4}\s+\b(khong|dung|chang|chua)\b(?:\s+[a-z0-9]+){0,4}\s+\b(chuyen|chuyen khoan|thanh toan|dong|tra)\b/.test(
+      value,
+    ) ||
+    /\b(khong|dung|chang|chua)\b(?:\s+(?:can|muon|de)){0,2}\s+\b(an|con|chau)\b(?:\s+[a-z0-9]+){0,4}\s+\b(chuyen|chuyen khoan|thanh toan|dong|tra)\b/.test(
       value,
     );
   return contactPays && cashReimbursement && !rejectsContactPayment;

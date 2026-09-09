@@ -834,7 +834,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
             npcGuidance:
               'Bộ máy game đã xác nhận An đề nghị Bà Hạnh tự đóng 219.000đ tiền mặt tại điểm thu chính thức bằng mã P203-08. Bà đồng ý rõ ràng và không nói sẽ đưa tiền cho người lạ.',
             fallbackReply:
-              'Ừ, bà sẽ mang hóa đơn ra điểm thu chính thức, đóng 219.000đ tiền mặt bằng mã P203-08 nha con.',
+              'Ừ, bà đồng ý tự đóng đúng 219.000đ tiền mặt tại điểm thu chính thức bằng mã P203-08 nha con.',
           },
         ],
       },

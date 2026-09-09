@@ -287,7 +287,9 @@ export function selectNpcAgent(
     roleBrief: thread.roleBrief,
     allowedFacts: thread.allowedFacts,
     forbiddenClaims: thread.forbiddenClaims,
-    voiceExamples: thread.fallbacks.ordinary.slice(0, 3),
+    // Fallbacks are recovery copy, not style examples. Feeding them back to
+    // Gemini made a failed canned line increasingly likely to be repeated.
+    voiceExamples: [],
   };
 }
 
@@ -344,7 +346,9 @@ export function collectNpcMemory(
       (state.messages[thread.id] ?? [])
         .filter(
           (message) =>
-            message.author !== 'system' && message.id !== latestMessageId,
+            message.author !== 'system' &&
+            message.id !== latestMessageId &&
+            message.responseMode !== 'fallback',
         )
         .map((message, messageIndex) => ({
           from:
@@ -359,7 +363,8 @@ export function collectNpcMemory(
           channelLabel: thread.title,
           minute: messageMinute(message.time),
           current: thread.id === currentThreadId ? 1 : 0,
-          stableOrder: threadIndex * 1000 + messageIndex,
+          stableOrder:
+            message.sequence ?? -1_000_000 + threadIndex * 1000 + messageIndex,
         })),
     )
     .sort(
@@ -369,12 +374,15 @@ export function collectNpcMemory(
 
   const currentTurns = turns.filter((turn) => turn.current);
   const otherTurns = turns.filter((turn) => !turn.current);
-  return [...otherTurns.slice(-4), ...currentTurns.slice(-8)].map(
-    ({ from, text, senderLabel, channelLabel }) => ({
+  return [...otherTurns.slice(-4), ...currentTurns.slice(-8)]
+    .sort(
+      (left, right) =>
+        left.stableOrder - right.stableOrder || left.minute - right.minute,
+    )
+    .map(({ from, text, senderLabel, channelLabel }) => ({
       from,
       text,
       senderLabel,
       channelLabel,
-    }),
-  );
+    }));
 }

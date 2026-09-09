@@ -88,6 +88,7 @@ export interface CharacterProfile {
 
 export interface GameMessage {
   id: string;
+  sequence?: number;
   author: MessageAuthor;
   senderLabel?: string;
   agentId?: string;

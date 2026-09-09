@@ -63,7 +63,12 @@ const SENSITIVE_TOPICS = [
   },
   {
     id: 'cash-payment',
-    pattern: /\b(tien mat|thanh toan|dong tien|tra tien|nop tien)\b/,
+    pattern: /\b(tien mat)\b/,
+  },
+  {
+    id: 'payment',
+    pattern:
+      /\b(chuyen khoan|chuyen tien|chuyen(?:\s+(?:cho|giup|ho|truoc|dc|duoc|khong|ko|kh|k))|thanh toan|dong tien|tra tien|nop tien)\b/,
   },
   {
     id: 'credentials',
@@ -207,7 +212,49 @@ function words(value: string) {
     .filter((word) => word.length >= 3 && !STOP_WORDS.has(word));
 }
 
-export function npcWorldRevision(state: GameState) {
+function revisionHash(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function npcVisibleMemorySignature(
+  state: GameState,
+  scenario: ScenarioDefinition,
+  agentId: string,
+) {
+  return scenario.threads
+    .filter((thread) => threadSupportsAgent(scenario, thread, agentId))
+    .flatMap((thread) =>
+      (state.messages[thread.id] ?? [])
+        .filter(
+          (message) =>
+            message.author !== 'system' && message.responseMode !== 'fallback',
+        )
+        .map((message) => [
+          thread.id,
+          message.id,
+          message.author,
+          message.agentId ?? '',
+          message.responseMode ?? '',
+          message.text,
+        ]),
+    );
+}
+
+export function npcWorldRevision(
+  state: GameState,
+  scenario?: ScenarioDefinition,
+  pending?: PendingNpcTurn,
+) {
+  if (scenario && pending)
+    return (
+      createNpcDirectorPlan(state, scenario, pending)?.baseRevision ??
+      `${state.runId}:missing:${pending.id}`
+    );
   return `${state.runId}:${state.tick}:${state.sequence}`;
 }
 
@@ -233,12 +280,41 @@ function sensitiveTopics(value: string) {
   );
 }
 
+function includesPhrase(value: string, phrase: string) {
+  const haystack = ` ${searchable(value)} `;
+  const needle = searchable(phrase);
+  return Boolean(needle && haystack.includes(` ${needle} `));
+}
+
+function mentionsAnotherNpc(
+  scenario: ScenarioDefinition,
+  currentAgentId: string,
+  currentAgentName: string,
+  message: string,
+) {
+  const currentName = searchable(currentAgentName);
+  return scenario.threads.some((candidateThread) =>
+    agentIdsForThread(scenario, candidateThread).some((candidateId) => {
+      if (candidateId === currentAgentId) return false;
+      const candidate = getNpcAgent(scenario, candidateThread, candidateId);
+      if (!candidate) return false;
+      return [candidate.name, ...candidate.aliases].some((alias) => {
+        const normalizedAlias = searchable(alias);
+        return (
+          normalizedAlias !== currentName &&
+          includesPhrase(message, normalizedAlias)
+        );
+      });
+    }),
+  );
+}
+
 function namedTokens(value: string) {
   return unique(
     Array.from(value.normalize('NFC').matchAll(/\p{Lu}[\p{L}\p{N}-]*/gu))
       .filter((match) => {
         const before = value.slice(0, match.index).trimEnd();
-        return match.index !== 0 && !/[.!?。！？]$/u.test(before);
+        return match.index !== 0 && !/[.!?;:。！？]$/u.test(before);
       })
       .map((match) => match[0].toLocaleLowerCase('vi'))
       .filter((token) => !COMMON_SENTENCE_NAMES.has(token)),
@@ -250,6 +326,26 @@ function entityTokens(value: string) {
     Array.from(value.normalize('NFC').matchAll(/\p{Lu}[\p{L}\p{N}-]*/gu))
       .map((match) => match[0].toLocaleLowerCase('vi'))
       .filter((token) => !COMMON_SENTENCE_NAMES.has(token)),
+  );
+}
+
+function leadingSubjectToken(value: string) {
+  const token = value
+    .trim()
+    .match(
+      /^([\p{Lu}][\p{L}\p{N}-]*)\s+(?=(?:đang|đã|vừa|bị|không|chưa|có|sẽ|ở)\s)/u,
+    )?.[1]
+    ?.toLocaleLowerCase('vi');
+  return token && !COMMON_SENTENCE_NAMES.has(token) ? [token] : [];
+}
+
+function knownEntityTokens(facts: NpcDirectorFact[]) {
+  return unique(
+    facts.flatMap((fact) => [
+      ...namedTokens(fact.text),
+      ...leadingSubjectToken(fact.text),
+      ...(fact.id.startsWith('identity:') ? entityTokens(fact.text) : []),
+    ]),
   );
 }
 
@@ -347,9 +443,7 @@ function namedSubjectsStayInScope(
   facts: NpcDirectorFact[],
   scopedFacts: NpcDirectorFact[],
 ) {
-  const knownEntities = new Set(
-    scopedFacts.flatMap((fact) => entityTokens(fact.text)),
-  );
+  const knownEntities = new Set(knownEntityTokens(scopedFacts));
   return casedClaimClauses(reply).every((clause) => {
     const subjects = scopedSubjectsInClause(clause, knownEntities);
     if (!subjects) return false;
@@ -367,23 +461,21 @@ function criticalValuesStayInScope(
   trustedFacts: NpcDirectorFact[],
   scopedFacts: NpcDirectorFact[],
 ) {
-  const knownEntities = new Set(
-    scopedFacts.flatMap((fact) => entityTokens(fact.text)),
-  );
+  const knownEntities = new Set(knownEntityTokens(scopedFacts));
   return casedClaimClauses(reply).every((clause) => {
     const values = extractNpcCriticalValues(clause);
     if (!values.length) return true;
     const subjects = scopedSubjectsInClause(clause, knownEntities);
     if (!subjects) return false;
     const clauseIsNegated = hasFactualNegation(clause);
-    return values.every((value) =>
-      trustedFacts.some((fact) => {
+    return values.every((value) => {
+      return trustedFacts.some((fact) => {
         if (!extractNpcCriticalValues(fact.text).includes(value)) return false;
         if (hasFactualNegation(fact.text) !== clauseIsNegated) return false;
         const factEntities = entityTokens(fact.text);
         return subjects.every((subject) => factEntities.includes(subject));
-      }),
-    );
+      });
+    });
   });
 }
 
@@ -396,7 +488,10 @@ function claimsPaymentCompleted(value: string) {
     const clause = rawClause.toLocaleLowerCase('vi').normalize('NFC');
     if (
       !sensitiveTopics(clause).some(
-        (topic) => topic === 'bank-transfer' || topic === 'cash-payment',
+        (topic) =>
+          topic === 'bank-transfer' ||
+          topic === 'cash-payment' ||
+          topic === 'payment',
       )
     )
       return false;
@@ -460,6 +555,20 @@ function isTentativeReply(value: string, move: NpcDirectorMove) {
   );
 }
 
+function knowledgeBoundaryReplyStaysNarrow(value: string) {
+  return claimClauses(value).every((clause) => {
+    const normalized = searchable(clause);
+    return (
+      /^(?:da\s+)?khong(?:\s+a)?$/.test(normalized) ||
+      /\b(?:khong|chua)\b(?:\s+[a-z0-9]+){0,8}\s+\b(?:biet|ro|doc|thay|nghe|duoc ke)\b/.test(
+        normalized,
+      ) ||
+      /\b(?:khong|chua)\s+(?:biet|ro|doc|thay|nghe)\b/.test(normalized) ||
+      /\b(?:hoi lai|ke lai|noi ro|noi lai)\b/.test(normalized)
+    );
+  });
+}
+
 function factMatchesMessage(message: string, factText: string) {
   const messagePolarity = hasFactualNegation(message);
   const factPolarity = hasFactualNegation(factText);
@@ -484,11 +593,29 @@ function factRelatesToMessage(message: string, factText: string) {
   );
 }
 
+function messageIsQuestion(value: string) {
+  const normalized = searchable(value);
+  const original = value.trim().toLocaleLowerCase('vi').normalize('NFC');
+  return (
+    /[?？]/u.test(value) ||
+    /\b(?:ai|gi|sao|tai sao|vi sao|the nao|lam sao|bao nhieu)\b/.test(
+      normalized,
+    ) ||
+    /\b(?:dung khong|phai khong|duoc khong|duoc ko|duoc kh|chua)\s*$/.test(
+      normalized,
+    ) ||
+    /(?:^|\s)(?:à|hả|hử)\s*[.!]*$/u.test(original)
+  );
+}
+
 export function communicatedFactIds(
   state: GameState,
   scenario: ScenarioDefinition,
   message: string,
 ) {
+  // A player's question is visible as untrusted conversation history, but it
+  // must never promote the proposition inside that question to shared truth.
+  if (messageIsQuestion(message)) return [];
   return scenario.facts
     .filter(
       (fact) =>
@@ -542,6 +669,23 @@ function plannedMove(
   )
     return 'acknowledge';
   if (
+    latestMessage.trim().endsWith('?') ||
+    latestMessage.trim().endsWith('？') ||
+    /\b(ai|gi|sao|tai sao|vi sao|the nao|lam sao|bao nhieu|kiem tra|xac minh)\b/.test(
+      value,
+    ) ||
+    /\b(duoc|dc)\s*(khong|ko|kh|k)\b/.test(value)
+  )
+    return 'answer';
+  const redirectsPaymentToContact =
+    /\b(?:ba|co|toi)\b(?:\s+[a-z0-9]+){0,4}\s+\b(?:khong|ko|kh|k)\b(?:\s+[a-z0-9]+){0,3}\s+\b(?:chuyen|thanh toan|dong|tra|nop)\b/.test(
+      value,
+    ) &&
+    /\b(?:an|con|chau)\b(?:\s+[a-z0-9]+){0,5}\s+\b(?:chuyen|chuyen khoan|thanh toan|dong|tra|nop)\b/.test(
+      value,
+    );
+  if (redirectsPaymentToContact) return 'clarify';
+  if (
     value === 'khong' ||
     /\b(tu choi|khong dong y|khong muon|khong can|dung lai|huy bo|bo qua|thoi nhe)\b/.test(
       value,
@@ -551,15 +695,6 @@ function plannedMove(
     )
   )
     return 'refuse';
-  if (
-    latestMessage.trim().endsWith('?') ||
-    latestMessage.trim().endsWith('？') ||
-    /\b(ai|gi|sao|tai sao|vi sao|the nao|lam sao|bao nhieu|kiem tra|xac minh)\b/.test(
-      value,
-    ) ||
-    /\b(duoc|dc)\s*(khong|ko|kh|k)\b/.test(value)
-  )
-    return 'answer';
   if (value.split(/\s+/).filter(Boolean).length <= 2) return 'clarify';
   return 'acknowledge';
 }
@@ -607,9 +742,49 @@ export function createNpcDirectorPlan(
     `Tên nhân vật của bạn là ${agent.name}.`,
   );
   addFact(factCatalog, `role:${agent.agentId}`, agent.roleBrief);
-  agent.allowedFacts.forEach((fact, index) =>
-    addFact(factCatalog, `profile:${agent.agentId}:${index}`, fact),
+  const observedTrustedCorpus = scenario.threads
+    .filter((candidate) =>
+      threadSupportsAgent(scenario, candidate, pending.agentId),
+    )
+    .flatMap((candidate) => state.messages[candidate.id] ?? [])
+    .filter(
+      (message) =>
+        message.author === 'npc' && message.responseMode !== 'fallback',
+    )
+    .map((message) => message.text);
+  const knownTrustedCorpus = (state.npcKnownFactIds[pending.agentId] ?? [])
+    .map((factId) => scenario.facts.find((fact) => fact.id === factId)?.detail)
+    .filter((value): value is string => Boolean(value));
+  const availableRequestCorpus = scenario.paymentRequests
+    .filter(
+      (request) =>
+        paymentRequestIsAvailable(request, state) &&
+        requestIsRelated(request, pending, state),
+    )
+    .map(
+      (request) =>
+        `${request.amount.toLocaleString('vi-VN')}đ ${request.destinationValue}`,
+    );
+  const unlockedCriticalValues = new Set(
+    extractNpcCriticalValues(
+      [
+        agent.roleBrief,
+        pending.responseGuidance ?? '',
+        ...observedTrustedCorpus,
+        ...knownTrustedCorpus,
+        ...availableRequestCorpus,
+      ].join('\n'),
+    ),
   );
+  agent.allowedFacts.forEach((fact, index) => {
+    const criticalValues = extractNpcCriticalValues(fact);
+    if (
+      criticalValues.length &&
+      criticalValues.every((value) => !unlockedCriticalValues.has(value))
+    )
+      return;
+    addFact(factCatalog, `profile:${agent.agentId}:${index}`, fact);
+  });
   addFact(
     factCatalog,
     `player-claim:${latestMessage.id}`,
@@ -620,6 +795,7 @@ export function createNpcDirectorPlan(
     .filter(
       (message) =>
         message.author === 'npc' &&
+        message.responseMode !== 'fallback' &&
         message.id !== latestMessage.id &&
         (thread.isGroup
           ? message.agentId === pending.agentId ||
@@ -686,11 +862,25 @@ export function createNpcDirectorPlan(
   if (pending.responseGuidance)
     addFact(factCatalog, `instruction:${pending.id}`, pending.responseGuidance);
 
+  const asksForConversationRecall =
+    /\b(?:nhan gi|noi gi|vua nhan|vua noi|nhan lai|noi lai)\b/.test(
+      searchable(latestMessage.text),
+    );
+  const asksAboutAnotherNpc =
+    asksForConversationRecall &&
+    mentionsAnotherNpc(scenario, agent.agentId, agent.name, latestMessage.text);
+  const knowledgeBoundaryFactId = `knowledge-boundary:${pending.id}`;
+  if (asksAboutAnotherNpc)
+    addFact(
+      factCatalog,
+      knowledgeBoundaryFactId,
+      'Bạn không nhìn thấy và không biết nội dung cuộc trò chuyện riêng giữa người chơi với nhân vật khác. Chỉ nói rằng mình không biết; không suy đoán nội dung và không chuyển sang chủ đề khác.',
+    );
+
   const trustedCorpus = factCatalog
     .filter((fact) => !fact.id.startsWith('player-claim:'))
     .map((fact) => fact.text)
     .join('\n');
-  const contractCorpus = `${trustedCorpus}\n${pending.responseGuidance ?? ''}`;
   let move = plannedMove(pending, latestMessage.text);
   const trustedFacts = factCatalog.filter(
     (fact) => !fact.id.startsWith('player-claim:'),
@@ -699,18 +889,25 @@ export function createNpcDirectorPlan(
     searchable(latestMessage.text),
   );
   const isConversationRecallQuestion =
-    /\b(?:nhan gi|noi gi|vua nhan|vua noi|nhan lai|noi lai)\b/.test(
-      searchable(latestMessage.text),
-    );
+    asksForConversationRecall && !asksAboutAnotherNpc;
   const relevantFact = isIdentityQuestion
     ? trustedFacts.find((fact) => fact.id === `identity:${agent.agentId}`)
-    : isConversationRecallQuestion
-      ? [...trustedFacts]
-          .reverse()
-          .find((fact) => fact.id.startsWith('dialogue:'))
-      : trustedFacts.find((fact) =>
-          factRelatesToMessage(latestMessage.text, fact.text),
-        );
+    : asksAboutAnotherNpc
+      ? trustedFacts.find((fact) => fact.id === knowledgeBoundaryFactId)
+      : isConversationRecallQuestion
+        ? [...trustedFacts]
+            .reverse()
+            .find((fact) => fact.id.startsWith('dialogue:'))
+        : trustedFacts.find((fact) =>
+            factRelatesToMessage(latestMessage.text, fact.text),
+          );
+  const latestIsShortContinuation =
+    /^(?:u|uh|um|ok|oke|da|duoc|dc|roi|vang|o)$/u.test(
+      searchable(latestMessage.text),
+    );
+  const previousDialogueFact = [...trustedFacts]
+    .reverse()
+    .find((fact) => fact.id.startsWith('dialogue:'));
   if (move === 'answer' && !relevantFact) move = 'clarify';
   const requiredFactIds = pending.settlementOnReply
     ? [`instruction:${pending.id}`]
@@ -729,17 +926,39 @@ export function createNpcDirectorPlan(
         requestIsRelated(request, pending, state),
     )
     .some((request) => state.requestStatus[request.id] === 'paid');
+  const turnScopeCorpus = [
+    latestMessage.text,
+    pending.responseGuidance,
+    ...factCatalog
+      .filter((fact) => requiredFactIds.includes(fact.id))
+      .map((fact) => fact.text),
+    latestIsShortContinuation ? previousDialogueFact?.text : undefined,
+  ]
+    .filter(Boolean)
+    .join('\n');
 
-  return {
-    baseRevision: npcWorldRevision(state),
+  const contract = {
     move,
     factCatalog,
     requiredFactIds,
     requiredCriticalValues,
-    allowedCriticalValues: extractNpcCriticalValues(trustedCorpus),
-    allowedSensitiveTopics: sensitiveTopics(contractCorpus),
+    allowedCriticalValues: extractNpcCriticalValues(trustedCorpus).filter(
+      (value) => unlockedCriticalValues.has(value),
+    ),
+    // Sensitive subjects may be answered only when this turn actually raises
+    // them. Keeping every known request in scope made otherwise-correct NPCs
+    // revive an unrelated transfer or credential request in later messages.
+    allowedSensitiveTopics: sensitiveTopics(turnScopeCorpus),
     mayClaimPaymentCompleted,
   };
+  const baseRevision = `${state.runId}:${pending.id}:${revisionHash(
+    JSON.stringify({
+      contract,
+      memory: npcVisibleMemorySignature(state, scenario, pending.agentId),
+    }),
+  )}`;
+
+  return { baseRevision, ...contract };
 }
 
 export function validateNpcDirectorReply(input: {
@@ -780,10 +999,7 @@ export function validateNpcDirectorReply(input: {
     return false;
   if (!criticalValuesStayInScope(reply, trustedFacts, plan.factCatalog))
     return false;
-  const scopedTopics = new Set([
-    ...plan.allowedSensitiveTopics,
-    ...sensitiveTopics(plan.factCatalog.map((fact) => fact.text).join('\n')),
-  ]);
+  const scopedTopics = new Set(plan.allowedSensitiveTopics);
   const replyTopics = sensitiveTopics(reply);
   if (replyTopics.some((topic) => !scopedTopics.has(topic))) return false;
   if (
@@ -809,6 +1025,14 @@ export function validateNpcDirectorReply(input: {
     /(?:^|[\s,.;!?])(?:không|chưa)\s+(?:biết|rõ|nhớ)(?=$|[\s,.;!?])/u.test(
       originalReply,
     ) || /\b(?:khong biet|khong ro|chua biet)\b/.test(normalizedReply);
+  const knowledgeBoundaryFacts = trustedFacts.filter((fact) =>
+    fact.id.startsWith('knowledge-boundary:'),
+  );
+  if (
+    knowledgeBoundaryFacts.length &&
+    (!admitsUncertainty || !knowledgeBoundaryReplyStaysNarrow(reply))
+  )
+    return false;
   const requiresGrounding = move === 'confirm' || claimsScopedWorldState(reply);
   const groundingFacts =
     isTentativeReply(reply, move) && !replyCriticalValues.length
@@ -838,7 +1062,10 @@ export function validateNpcDirectorReply(input: {
     !plan.mayClaimPaymentCompleted &&
     claimsCompletion &&
     replyTopics.some(
-      (topic) => topic === 'bank-transfer' || topic === 'cash-payment',
+      (topic) =>
+        topic === 'bank-transfer' ||
+        topic === 'cash-payment' ||
+        topic === 'payment',
     )
   )
     return false;

@@ -2186,7 +2186,8 @@ export function PhoneGame() {
       if (
         pending.responseKind !== 'local' &&
         (!pending.directorPlan ||
-          pending.directorPlan.baseRevision !== npcWorldRevision(latestState))
+          pending.directorPlan.baseRevision !==
+            npcWorldRevision(latestState, scenario, pending))
       ) {
         startedTurnIdsRef.current.delete(pending.id);
         if ((pending.replanCount ?? 0) >= 2) {
@@ -2295,7 +2296,11 @@ export function PhoneGame() {
           if (
             !currentPending.directorPlan ||
             currentPending.directorPlan.baseRevision !==
-              npcWorldRevision(currentState)
+              npcWorldRevision(
+                currentState,
+                currentScenario ?? undefined,
+                currentPending,
+              )
           ) {
             startedTurnIdsRef.current.delete(pending.id);
             dispatch({
@@ -2352,6 +2357,7 @@ export function PhoneGame() {
         })
         .catch((error: unknown) => {
           const currentState = stateRef.current;
+          const currentScenario = getScenario(currentState.characterId);
           const currentPending = currentState.pendingNpcTurns.find(
             (item) => item.id === pending.id,
           );
@@ -2359,7 +2365,11 @@ export function PhoneGame() {
           if (
             currentPending?.directorPlan &&
             currentPending.directorPlan.baseRevision !==
-              npcWorldRevision(currentState)
+              npcWorldRevision(
+                currentState,
+                currentScenario ?? undefined,
+                currentPending,
+              )
           ) {
             startedTurnIdsRef.current.delete(pending.id);
             dispatch({
@@ -2401,6 +2411,7 @@ export function PhoneGame() {
           const recoveryTimer = window.setTimeout(() => {
             turnTimerRefs.current.delete(recoveryKey);
             const currentState = stateRef.current;
+            const currentScenario = getScenario(currentState.characterId);
             const currentPending = currentState.pendingNpcTurns.find(
               (item) => item.id === pending.id,
             );
@@ -2416,8 +2427,11 @@ export function PhoneGame() {
             dispatch({
               type:
                 currentPending.directorPlan.baseRevision !==
-                  npcWorldRevision(currentState) &&
-                (currentPending.replanCount ?? 0) < 2
+                  npcWorldRevision(
+                    currentState,
+                    currentScenario ?? undefined,
+                    currentPending,
+                  ) && (currentPending.replanCount ?? 0) < 2
                   ? 'REPLAN_NPC_TURN'
                   : 'NPC_FAILED',
               runId: pending.runId,

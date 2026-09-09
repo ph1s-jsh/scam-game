@@ -221,7 +221,7 @@ async function getNpcModel(tokenMode: AppCheckTokenMode) {
   return modelPromises[tokenMode];
 }
 
-function parseResult(value: string): FirebaseNpcResult {
+export function parseFirebaseNpcResult(value: string): FirebaseNpcResult {
   const parsed = JSON.parse(value) as Partial<FirebaseNpcResult>;
   if (typeof parsed.reply !== 'string' || !parsed.reply.trim())
     throw new Error('Firebase AI returned an empty reply');
@@ -232,7 +232,11 @@ function parseResult(value: string): FirebaseNpcResult {
     parsed.factIdsUsed.some((factId) => typeof factId !== 'string')
   )
     throw new Error('Firebase AI returned invalid fact references');
-  if (/https?:\/\/\S+/iu.test(parsed.reply))
+  if (
+    /(?:https?:\/\/|www\.)\S+|\b[a-z0-9](?:[a-z0-9-]{0,62}\.)+(?:com|net|org|vn|io|app|dev|site)(?:\/\S*)?/iu.test(
+      parsed.reply,
+    )
+  )
     throw new Error('Firebase AI returned an active URL');
   const reply = parsed.reply
     .trim()
@@ -305,7 +309,7 @@ Trả về đúng JSON theo schema. factIdsUsed là dấu vết kiểm tra: ch�
   const generateWithTokenMode = async (tokenMode: AppCheckTokenMode) => {
     const model = await getNpcModel(tokenMode);
     const result = await model.generateContent(prompt);
-    return parseResult(result.response.text());
+    return parseFirebaseNpcResult(result.response.text());
   };
 
   const initialMode = preferredAppCheckTokenMode;
