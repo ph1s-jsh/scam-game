@@ -271,6 +271,7 @@ export interface NpcDirectorPlan {
   allowedSensitiveTopics: string[];
   mayClaimPaymentCompleted: boolean;
   recentNpcReplies: string[];
+  interactionMode: 'supportive' | 'procedural' | 'persistent' | 'coercive';
 }
 
 export interface PendingNpcTurn {

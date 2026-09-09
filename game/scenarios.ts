@@ -110,6 +110,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
           'Nhà thuốc Minh Tâm giao tối nay.',
           'Nếu Bà Hạnh nhờ rõ ràng, An có thể chuyển đúng 186.000đ cho đơn MH-203 rồi nhận lại tiền mặt từ bà.',
           'Bà Hạnh cũng có thể thanh toán 186.000đ tiền mặt khi nhận đúng đơn thuốc.',
+          'An không đủ tiền để tự ứng luôn đơn thuốc; nếu bà không hoàn lại tiền mặt thì An không thể chuyển khoản thay bà.',
           'An không đổi số và không nhờ đóng học phí.',
         ],
         forbiddenClaims: ['Không xin thêm tiền.', 'Không nói mình đã về nhà.'],

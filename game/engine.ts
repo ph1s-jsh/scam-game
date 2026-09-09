@@ -441,6 +441,8 @@ function directorRecoveryFallback(
   if (move === 'refuse') {
     if (pending.agentId.startsWith('fraud.'))
       return 'Việc này cần xử lý ngay. Nếu chưa làm được thì bạn thu xếp một cách khác rồi báo mình nhé.';
+    if (pending.directorPlan?.interactionMode === 'persistent')
+      return 'Dạ con cũng không đủ tiền để ứng đơn này đâu bà, nên lúc nhận thuốc bà thanh toán giúp con nhé.';
     if (scenario.profile.id === 'hanh' && pending.agentId.startsWith('family.'))
       return 'Dạ con hiểu rồi ạ, vậy mình dừng cách đó lại nhé bà.';
     if (pending.agentId === 'family.hanh')

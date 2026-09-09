@@ -2290,11 +2290,7 @@ export function PhoneGame() {
         latestMessage: latest.text,
         history: isolatesPrivateConversation ? [] : npcMemory,
         recentNpcReplies: directorPlan.recentNpcReplies,
-        interactionMode: pending.agentId.startsWith('fraud.')
-          ? 'coercive'
-          : pending.agentId.startsWith('service.')
-            ? 'procedural'
-            : 'supportive',
+        interactionMode: directorPlan.interactionMode,
       })
         .then(({ reply, move, factIdsUsed }) => {
           const currentState = stateRef.current;

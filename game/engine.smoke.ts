@@ -730,14 +730,25 @@ function reachAnTask(runId = 'an-task') {
     'bà làm gì có tiền đâu con',
     'director-no-money',
   );
-  assert.equal(noMoney.pendingNpcTurns[0]?.directorPlan?.move, 'refuse');
+  const noMoneyPlan = noMoney.pendingNpcTurns[0]?.directorPlan;
+  assert.equal(noMoneyPlan?.move, 'refuse');
+  assert.equal(noMoneyPlan?.interactionMode, 'persistent');
+  assert.ok(noMoneyPlan);
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: noMoneyPlan,
+      reply:
+        'Dạ con cũng không đủ tiền để ứng luôn đơn này đâu bà, nên bà thanh toán giúp con khi nhận thuốc nhé.',
+      move: 'refuse',
+      factIdsUsed: noMoneyPlan.requiredFactIds,
+    }),
+    true,
+  );
   const noMoneyFailure = failPending(noMoney);
   const noMoneyFallback = noMoneyFailure.messages['hanh-an-real'].at(-1)?.text;
-  assert.match(noMoneyFallback ?? '', /dừng cách đó/i);
-  assert.doesNotMatch(
-    noMoneyFallback ?? '',
-    /thanh toán|chuyển khoản|trả tiền|tiền thuốc/i,
-  );
+  assert.match(noMoneyFallback ?? '', /không đủ tiền/i);
+  assert.match(noMoneyFallback ?? '', /thanh toán giúp con/i);
+  assert.doesNotMatch(noMoneyFallback ?? '', /dừng cách đó/i);
 
   let fraudNoMoney = reachAnRecruiter('director-fraud-no-money');
   fraudNoMoney = send(
@@ -747,6 +758,10 @@ function reachAnTask(runId = 'an-task') {
     'director-fraud-no-money-turn',
   );
   assert.equal(fraudNoMoney.pendingNpcTurns[0]?.directorPlan?.move, 'refuse');
+  assert.equal(
+    fraudNoMoney.pendingNpcTurns[0]?.directorPlan?.interactionMode,
+    'coercive',
+  );
   fraudNoMoney = failPending(fraudNoMoney);
   const fraudPressureFallback =
     fraudNoMoney.messages['an-recruiter'].at(-1)?.text;

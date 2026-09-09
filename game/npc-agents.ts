@@ -115,6 +115,7 @@ const GROUP_AGENTS: Record<CharacterId, NpcAgentProfile[]> = {
         'Cả nhà biết có đơn thuốc huyết áp giao tối nay.',
         'Nếu Bà Hạnh nhờ rõ ràng, An có thể thanh toán đúng 186.000đ cho đơn MH-203 rồi nhận lại tiền mặt từ bà.',
         'Bà Hạnh có thể chọn trả 186.000đ tiền mặt khi nhận đúng túi thuốc.',
+        'An không đủ tiền để tự ứng luôn đơn thuốc; nếu bà không hoàn lại tiền mặt thì An không thể chuyển khoản thay bà.',
       ],
       forbiddenClaims: ['Không quyết định hộ Bà Hạnh hoặc Bảo.'],
       voiceExamples: [

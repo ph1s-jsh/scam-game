@@ -68,7 +68,7 @@ const SENSITIVE_TOPICS = [
   {
     id: 'payment',
     pattern:
-      /\b(chuyen khoan|chuyen tien|chuyen(?:\s+(?:cho|giup|ho|truoc|dc|duoc|khong|ko|kh|k))|thanh toan|dong tien|tra tien|nop tien)\b/,
+      /\b(tien|chuyen khoan|chuyen tien|chuyen(?:\s+(?:cho|giup|ho|truoc|dc|duoc|khong|ko|kh|k))|thanh toan|dong tien|tra tien|nop tien)\b/,
   },
   {
     id: 'credentials',
@@ -973,6 +973,17 @@ export function createNpcDirectorPlan(
   ]
     .filter(Boolean)
     .join('\n');
+  const allowedSensitiveTopics = sensitiveTopics(turnScopeCorpus);
+  const interactionMode = pending.agentId.startsWith('fraud.')
+    ? ('coercive' as const)
+    : pending.agentId.startsWith('service.')
+      ? ('procedural' as const)
+      : scenario.id === 'hanh' &&
+          pending.agentId === 'family.an' &&
+          pending.threadId === 'hanh-an-real' &&
+          allowedSensitiveTopics.includes('payment')
+        ? ('persistent' as const)
+        : ('supportive' as const);
 
   const contract = {
     move,
@@ -985,9 +996,10 @@ export function createNpcDirectorPlan(
     // Sensitive subjects may be answered only when this turn actually raises
     // them. Keeping every known request in scope made otherwise-correct NPCs
     // revive an unrelated transfer or credential request in later messages.
-    allowedSensitiveTopics: sensitiveTopics(turnScopeCorpus),
+    allowedSensitiveTopics,
     mayClaimPaymentCompleted,
     recentNpcReplies: recentNpcMessages.map((message) => message.text),
+    interactionMode,
   };
   const baseRevision = `${state.runId}:${pending.id}:${revisionHash(
     JSON.stringify({
