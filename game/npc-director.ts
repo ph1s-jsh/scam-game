@@ -1034,9 +1034,15 @@ export function validateNpcDirectorReply(input: {
   const knowledgeBoundaryFacts = trustedFacts.filter((fact) =>
     fact.id.startsWith('knowledge-boundary:'),
   );
+  const admitsPrivateBoundary =
+    knowledgeBoundaryFacts.length > 0 &&
+    /\b(?:khong|chua)\b(?:\s+[a-z0-9]+){0,5}\s+\b(?:doc|xem|thay|nghe)\b/.test(
+      normalizedReply,
+    );
+  const safelyAdmitsUncertainty = admitsUncertainty || admitsPrivateBoundary;
   if (
     knowledgeBoundaryFacts.length &&
-    (!admitsUncertainty || !knowledgeBoundaryReplyStaysNarrow(reply))
+    (!safelyAdmitsUncertainty || !knowledgeBoundaryReplyStaysNarrow(reply))
   )
     return false;
   const requiresGrounding = move === 'confirm' || claimsScopedWorldState(reply);
@@ -1046,7 +1052,7 @@ export function validateNpcDirectorReply(input: {
       : trustedFacts;
   if (
     requiresGrounding &&
-    !admitsUncertainty &&
+    !safelyAdmitsUncertainty &&
     (!groundingFacts.length ||
       !factGroundsReply(reply, groundingFacts) ||
       !namedSubjectsStayInScope(reply, groundingFacts, plan.factCatalog))
