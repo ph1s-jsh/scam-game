@@ -427,6 +427,37 @@ function privateConversationFallback(
   return 'Mình không biết nội dung cuộc trò chuyện riêng đó. Bạn kể lại nếu cần nhé.';
 }
 
+function directorRecoveryFallback(
+  scenario: ScenarioDefinition,
+  pending: PendingNpcTurn,
+) {
+  const move = pending.directorPlan?.move;
+  if (!move || move === 'answer' || move === 'confirm' || move === 'boundary')
+    return null;
+
+  if (move === 'clarify')
+    return emergencyNpcReplies(scenario, pending.agentId)[0] ?? null;
+
+  if (move === 'refuse') {
+    if (pending.agentId.startsWith('fraud.'))
+      return 'Việc này cần xử lý ngay. Nếu chưa làm được thì bạn thu xếp một cách khác rồi báo mình nhé.';
+    if (scenario.profile.id === 'hanh' && pending.agentId.startsWith('family.'))
+      return 'Dạ con hiểu rồi ạ, vậy mình dừng cách đó lại nhé bà.';
+    if (pending.agentId === 'family.hanh')
+      return 'Ừ, bà hiểu rồi. Vậy mình không làm theo cách đó nữa nhé con.';
+    if (scenario.profile.id === 'an' && pending.agentId === 'family.bao')
+      return 'Em hiểu rồi, vậy mình dừng cách đó lại nhé chị.';
+    if (scenario.profile.id === 'bao' && pending.agentId === 'family.an')
+      return 'Chị hiểu rồi, vậy mình không làm theo cách đó nữa nhé em.';
+    return 'Mình hiểu rồi, vậy tạm dừng cách đó nhé.';
+  }
+
+  if (scenario.profile.id === 'hanh' && pending.agentId.startsWith('family.'))
+    return 'Dạ con hiểu ý bà rồi ạ.';
+  if (pending.agentId === 'family.hanh') return 'Ừ, bà hiểu ý con rồi.';
+  return 'Mình hiểu ý bạn rồi.';
+}
+
 export function visiblePaymentRequests(
   state: GameState,
   scenario: ScenarioDefinition,
@@ -1210,6 +1241,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           text:
             settlement?.option.fallbackReply ??
             privateConversationFallback(scenario, pending) ??
+            directorRecoveryFallback(scenario, pending) ??
             pickFallback(
               thread.fallbacks,
               intent,

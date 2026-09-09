@@ -684,6 +684,11 @@ function plannedMove(
     )
   )
     return 'acknowledge';
+  const expressesFinancialConstraint =
+    /\b(?:khong|chang)\b(?:\s+[a-z0-9]+){0,4}\s+\b(?:co|du)\b(?:\s+[a-z0-9]+){0,3}\s+\btien\b/.test(
+      value,
+    ) || /\blam gi co tien\b/.test(value);
+  if (expressesFinancialConstraint) return 'refuse';
   if (
     latestMessage.trim().endsWith('?') ||
     latestMessage.trim().endsWith('？') ||

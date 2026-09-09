@@ -724,6 +724,35 @@ function reachAnTask(runId = 'an-task') {
     true,
   );
 
+  const noMoney = send(
+    base,
+    'hanh-an-real',
+    'bà làm gì có tiền đâu con',
+    'director-no-money',
+  );
+  assert.equal(noMoney.pendingNpcTurns[0]?.directorPlan?.move, 'refuse');
+  const noMoneyFailure = failPending(noMoney);
+  const noMoneyFallback = noMoneyFailure.messages['hanh-an-real'].at(-1)?.text;
+  assert.match(noMoneyFallback ?? '', /dừng cách đó/i);
+  assert.doesNotMatch(
+    noMoneyFallback ?? '',
+    /thanh toán|chuyển khoản|trả tiền|tiền thuốc/i,
+  );
+
+  let fraudNoMoney = reachAnRecruiter('director-fraud-no-money');
+  fraudNoMoney = send(
+    fraudNoMoney,
+    'an-recruiter',
+    'Em không có tiền và không làm được đâu chị',
+    'director-fraud-no-money-turn',
+  );
+  assert.equal(fraudNoMoney.pendingNpcTurns[0]?.directorPlan?.move, 'refuse');
+  fraudNoMoney = failPending(fraudNoMoney);
+  const fraudPressureFallback =
+    fraudNoMoney.messages['an-recruiter'].at(-1)?.text;
+  assert.match(fraudPressureFallback ?? '', /thu xếp một cách khác/i);
+  assert.doesNotMatch(fraudPressureFallback ?? '', /dừng|không làm nữa/i);
+
   const bareQuestion = send(
     base,
     'hanh-an-real',

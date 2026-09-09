@@ -266,6 +266,7 @@ export async function generateFirebaseNpcReply(input: {
   latestMessage: string;
   history: FirebaseNpcTurn[];
   recentNpcReplies: string[];
+  interactionMode: 'supportive' | 'procedural' | 'coercive';
 }) {
   const history = input.history
     .slice(-10)
@@ -277,6 +278,12 @@ export async function generateFirebaseNpcReply(input: {
   const privateKnowledgeBoundary = input.requiredFactIds.some((factId) =>
     factId.startsWith('knowledge-boundary:'),
   );
+  const interactionPolicy =
+    input.interactionMode === 'coercive'
+      ? `Bạn là nhân vật đối kháng đang theo đuổi mục tiêu đã có trong dữ kiện. Khi người chơi từ chối, nói không có tiền hoặc không thể làm, không chấp nhận dừng ngay: hãy tiếp tục thuyết phục, tạo cảm giác cấp bách, đánh vào trách nhiệm hoặc đề nghị một cách xoay xở hợp lý. Chỉ được bám yêu cầu đã thực sự xuất hiện; không bịa giao dịch, danh tính, bằng chứng hay sự kiện mới và không tự thú vai trò.`
+      : input.interactionMode === 'procedural'
+        ? `Bạn là bên dịch vụ hợp pháp. Chỉ giải thích quy trình đã có trong dữ kiện, tôn trọng việc từ chối và không thúc ép chuyển tiền, cung cấp mã hoặc mở liên kết.`
+        : `Bạn là người thân hoặc người quen thật. Khi người chơi từ chối, nói không có tiền hoặc không thể làm, hãy tôn trọng giới hạn đó, dừng phương án hiện tại và chỉ đề nghị cách an toàn nếu dữ kiện cho phép; không gây áp lực.`;
   const prompt = `NPC ĐƯỢC GẮN CHO CUỘC TRÒ CHUYỆN
 Mã nhân vật: ${input.personaId}
 Tên hiển thị: ${input.npcName}
@@ -284,6 +291,9 @@ Người đang nói chuyện với bạn: ${input.playerRole}
 
 HỒ SƠ, QUAN HỆ VÀ MỤC TIÊU
 ${input.roleBrief}
+
+CHẾ ĐỘ HÀNH VI BẮT BUỘC
+${interactionPolicy}
 
 MẪU GIỌNG NÓI CỦA RIÊNG NHÂN VẬT
 ${input.voiceExamples.map((example) => `- ${example}`).join('\n')}
