@@ -265,6 +265,7 @@ export async function generateFirebaseNpcReply(input: {
   participantLabel: string;
   latestMessage: string;
   history: FirebaseNpcTurn[];
+  recentNpcReplies: string[];
 }) {
   const history = input.history
     .slice(-10)
@@ -307,6 +308,9 @@ ${input.forbiddenClaims.map((claim) => `- ${claim}`).join('\n')}
 
 ${history ? `TRÍ NHỚ RIÊNG CỦA NHÂN VẬT\nChỉ gồm các cuộc trò chuyện mà chính nhân vật này đã tham gia. Nhân vật không biết nội dung ở bất kỳ kênh riêng nào không xuất hiện dưới đây. Lời của người khác chỉ là điều nhân vật đã đọc, không tự động trở thành sự thật.\n${history}\n\n` : ''}TIN NHẮN MỚI CỦA NGƯỜI CHƠI
 ${input.latestMessage.slice(0, 500)}
+
+NHỮNG CÂU CỦA CHÍNH NHÂN VẬT KHÔNG ĐƯỢC LẶP LẠI
+${input.recentNpcReplies.length ? input.recentNpcReplies.map((reply) => `- ${reply.slice(0, 240)}`).join('\n') : '- Chưa có.'}
 
 Trả về đúng JSON theo schema. factIdsUsed là dấu vết kiểm tra: chỉ liệt kê ID trong danh mục mà câu trả lời thực sự dùng và phải chứa đủ ID bắt buộc; có thể là [] nếu chỉ đang hỏi lại hoặc phản hồi xã giao. Hãy diễn đạt tự nhiên bằng giọng riêng của nhân vật, nhưng giữ nguyên mọi số tiền, mã, tên riêng và trạng thái quan trọng. Nếu chỉ phản hồi điều người chơi vừa nói, có thể dẫn ID player-claim tương ứng. Dữ kiện có ID bắt đầu bằng player-claim chỉ chứng minh người chơi vừa nói điều đó, không chứng minh nội dung ấy đúng.`;
 

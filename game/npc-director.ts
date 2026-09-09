@@ -982,6 +982,7 @@ export function createNpcDirectorPlan(
     // revive an unrelated transfer or credential request in later messages.
     allowedSensitiveTopics: sensitiveTopics(turnScopeCorpus),
     mayClaimPaymentCompleted,
+    recentNpcReplies: recentNpcMessages.map((message) => message.text),
   };
   const baseRevision = `${state.runId}:${pending.id}:${revisionHash(
     JSON.stringify({
@@ -1001,6 +1002,12 @@ export function validateNpcDirectorReply(input: {
 }) {
   const { plan, reply, move } = input;
   if (!reply.trim() || !moveFitsPlan(plan.move, move)) return false;
+  if (
+    (plan.recentNpcReplies ?? []).some(
+      (previousReply) => searchable(previousReply) === searchable(reply),
+    )
+  )
+    return false;
 
   const factIdsUsed = unique(input.factIdsUsed);
   const allowedFactIds = new Set(plan.factCatalog.map((fact) => fact.id));

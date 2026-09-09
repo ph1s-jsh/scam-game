@@ -2268,6 +2268,13 @@ export function PhoneGame() {
       const isolatesPrivateConversation = directorPlan.requiredFactIds.some(
         (factId) => factId.startsWith('knowledge-boundary:'),
       );
+      const npcMemory = collectNpcMemory(
+        latestState,
+        scenario,
+        pending.agentId,
+        thread.id,
+        latest.id,
+      );
       void generateFirebaseNpcReply({
         personaId: pending.memoryScopeId,
         npcName: agent.name,
@@ -2281,15 +2288,8 @@ export function PhoneGame() {
         voiceExamples: agent.voiceExamples,
         participantLabel: pending.senderLabel,
         latestMessage: latest.text,
-        history: isolatesPrivateConversation
-          ? []
-          : collectNpcMemory(
-              latestState,
-              scenario,
-              pending.agentId,
-              thread.id,
-              latest.id,
-            ),
+        history: isolatesPrivateConversation ? [] : npcMemory,
+        recentNpcReplies: directorPlan.recentNpcReplies,
       })
         .then(({ reply, move, factIdsUsed }) => {
           const currentState = stateRef.current;

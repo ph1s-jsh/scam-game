@@ -742,6 +742,16 @@ function reachAnTask(runId = 'an-task') {
     }),
     true,
   );
+  assert.ok(barePlan.recentNpcReplies.length > 0);
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: barePlan,
+      reply: barePlan.recentNpcReplies.at(-1)!,
+      move: 'clarify',
+      factIdsUsed: [],
+    }),
+    false,
+  );
 
   const privateRecall = send(
     base,

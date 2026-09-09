@@ -270,6 +270,7 @@ export interface NpcDirectorPlan {
   allowedCriticalValues: string[];
   allowedSensitiveTopics: string[];
   mayClaimPaymentCompleted: boolean;
+  recentNpcReplies: string[];
 }
 
 export interface PendingNpcTurn {
