@@ -2323,7 +2323,9 @@ export function PhoneGame() {
           ) {
             const rejectionMessage = `[NPC director] Rejected a generated reply for move=${move}; retrying with the same world state when possible.`;
             if (new URLSearchParams(window.location.search).has('npcDebug'))
-              console.warn(rejectionMessage, { reply, move, factIdsUsed });
+              console.warn(
+                `${rejectionMessage} diagnostic=${JSON.stringify({ reply, move, factIdsUsed })}`,
+              );
             else console.warn(rejectionMessage);
             if ((currentPending.replanCount ?? 0) < 1) {
               validationRetryScheduled = true;
