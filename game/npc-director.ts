@@ -556,7 +556,14 @@ function isTentativeReply(value: string, move: NpcDirectorMove) {
 }
 
 function knowledgeBoundaryReplyStaysNarrow(value: string) {
-  return claimClauses(value).every((clause) => {
+  // `claimClauses` normally splits on "và" so separate world claims can be
+  // checked independently. Preserve the conjunction when it merely joins the
+  // two participants of a private conversation ("giữa bà và Bảo").
+  const protectedParticipantPair = value.replace(
+    /\b(giữa|của)\s+([\p{L}\p{N}-]+(?:\s+[\p{L}\p{N}-]+)?)\s+và\s+([\p{L}\p{N}-]+(?:\s+[\p{L}\p{N}-]+)?)/giu,
+    '$1 $2 với $3',
+  );
+  return claimClauses(protectedParticipantPair).every((clause) => {
     const normalized = searchable(clause);
     return (
       /^(?:da|vang|u|a)$/.test(normalized) ||
