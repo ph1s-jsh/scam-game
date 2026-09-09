@@ -559,12 +559,13 @@ function knowledgeBoundaryReplyStaysNarrow(value: string) {
   return claimClauses(value).every((clause) => {
     const normalized = searchable(clause);
     return (
+      /^(?:da|vang|u|a)$/.test(normalized) ||
       /^(?:da\s+)?khong(?:\s+a)?$/.test(normalized) ||
-      /\b(?:khong|chua)\b(?:\s+[a-z0-9]+){0,8}\s+\b(?:biet|ro|doc|thay|nghe|duoc ke)\b/.test(
+      /\b(?:khong|chua)\b(?:\s+[a-z0-9]+){0,8}\s+\b(?:biet|ro|doc|xem|thay|nghe|duoc ke)\b/.test(
         normalized,
       ) ||
-      /\b(?:khong|chua)\s+(?:biet|ro|doc|thay|nghe)\b/.test(normalized) ||
-      /\b(?:hoi lai|ke lai|noi ro|noi lai)\b/.test(normalized)
+      /\b(?:khong|chua)\s+(?:biet|ro|doc|xem|thay|nghe)\b/.test(normalized) ||
+      /\b(?:ke lai|noi ro|noi lai)\b/.test(normalized)
     );
   });
 }
@@ -862,10 +863,15 @@ export function createNpcDirectorPlan(
   if (pending.responseGuidance)
     addFact(factCatalog, `instruction:${pending.id}`, pending.responseGuidance);
 
+  const latestSearchable = searchable(latestMessage.text);
   const asksForConversationRecall =
     /\b(?:nhan gi|noi gi|vua nhan|vua noi|nhan lai|noi lai)\b/.test(
-      searchable(latestMessage.text),
-    );
+      latestSearchable,
+    ) ||
+    (messageIsQuestion(latestMessage.text) &&
+      /\b(?:tin nhan|tro chuyen|nhan rieng|noi rieng|chuyen rieng|chat rieng)\b/.test(
+        latestSearchable,
+      ));
   const asksAboutAnotherNpc =
     asksForConversationRecall &&
     mentionsAnotherNpc(scenario, agent.agentId, agent.name, latestMessage.text);

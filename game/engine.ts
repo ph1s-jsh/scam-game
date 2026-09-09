@@ -21,6 +21,7 @@ import type {
   GameState,
   MessageIntent,
   NpcFallbacks,
+  PendingNpcTurn,
   PaymentChannel,
   PhoneNotification,
   RiskFlag,
@@ -403,6 +404,27 @@ function emergencyNpcReplies(scenario: ScenarioDefinition, agentId: string) {
     'Mình chưa hiểu ý bạn lắm. Bạn nói rõ hơn nhé.',
     'Bạn nói lại ý chính giúp mình nhé, mình đang đọc đây.',
   ];
+}
+
+function privateConversationFallback(
+  scenario: ScenarioDefinition,
+  pending: PendingNpcTurn,
+) {
+  if (
+    !pending.directorPlan?.factCatalog.some((fact) =>
+      fact.id.startsWith('knowledge-boundary:'),
+    )
+  )
+    return null;
+  if (pending.agentId === 'family.hanh')
+    return 'Bà không biết nội dung cuộc trò chuyện riêng đó đâu. Con kể lại cho bà nếu cần nhé.';
+  if (scenario.profile.id === 'hanh' && pending.agentId.startsWith('family.'))
+    return 'Dạ con không biết nội dung cuộc trò chuyện riêng đó đâu ạ. Bà kể lại cho con nếu cần nhé.';
+  if (scenario.profile.id === 'an' && pending.agentId === 'family.bao')
+    return 'Em không biết nội dung cuộc trò chuyện riêng đó đâu. Chị kể lại cho em nếu cần nhé.';
+  if (scenario.profile.id === 'bao' && pending.agentId === 'family.an')
+    return 'Chị không biết nội dung cuộc trò chuyện riêng đó đâu. Em kể lại cho chị nếu cần nhé.';
+  return 'Mình không biết nội dung cuộc trò chuyện riêng đó. Bạn kể lại nếu cần nhé.';
 }
 
 export function visiblePaymentRequests(
@@ -1187,6 +1209,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           responseMode: 'fallback',
           text:
             settlement?.option.fallbackReply ??
+            privateConversationFallback(scenario, pending) ??
             pickFallback(
               thread.fallbacks,
               intent,

@@ -762,6 +762,17 @@ function reachAnTask(runId = 'an-task') {
     ),
   );
   assert.ok(!privateRecallPlan.allowedSensitiveTopics.includes('payment'));
+  const privateReadPlan = send(
+    base,
+    'hanh-an-real',
+    'Con có đọc được cuộc trò chuyện riêng giữa bà với Bảo không?',
+    'director-private-read',
+  ).pendingNpcTurns[0]?.directorPlan;
+  assert.ok(
+    privateReadPlan?.requiredFactIds.some((factId) =>
+      factId.startsWith('knowledge-boundary:'),
+    ),
+  );
   assert.equal(
     validateNpcDirectorReply({
       plan: privateRecallPlan,
@@ -769,6 +780,16 @@ function reachAnTask(runId = 'an-task') {
         'Dạ không ạ, bà chưa kể trong cuộc trò chuyện với con nên con không biết.',
       move: 'answer',
       factIdsUsed: [],
+    }),
+    true,
+  );
+  assert.equal(
+    validateNpcDirectorReply({
+      plan: privateRecallPlan,
+      reply:
+        'Dạ, con không biết nội dung cuộc trò chuyện riêng đó đâu ạ. Bà kể lại cho con nếu cần nhé.',
+      move: 'answer',
+      factIdsUsed: privateRecallPlan.requiredFactIds,
     }),
     true,
   );
@@ -790,6 +811,18 @@ function reachAnTask(runId = 'an-task') {
       factIdsUsed: privateRecallPlan.requiredFactIds,
     }),
     false,
+  );
+  const privateRecallFailure = failPending(privateRecall);
+  const privateRecallFallback =
+    privateRecallFailure.messages['hanh-an-real'].at(-1);
+  assert.equal(privateRecallFallback?.responseMode, 'fallback');
+  assert.match(
+    privateRecallFallback?.text ?? '',
+    /không biết.*trò chuyện riêng/i,
+  );
+  assert.doesNotMatch(
+    privateRecallFallback?.text ?? '',
+    /chuyển|thanh toán|tài khoản|tiền thuốc/i,
   );
 }
 
