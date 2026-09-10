@@ -24,6 +24,7 @@ export type NpcMemoryTurn = {
   text: string;
   senderLabel?: string;
   channelLabel: string;
+  isRecovery?: boolean;
 };
 
 const THREAD_AGENTS: Record<CharacterId, Record<string, AgentBinding>> = {
@@ -113,9 +114,9 @@ const GROUP_AGENTS: Record<CharacterId, NpcAgentProfile[]> = {
         'An đang học đến 20 giờ.',
         'Bảo học bù và về muộn.',
         'Cả nhà biết có đơn thuốc huyết áp giao tối nay.',
-        'Nếu Bà Hạnh nhờ rõ ràng, An có thể thanh toán đúng 186.000đ cho đơn MH-203 rồi nhận lại tiền mặt từ bà.',
+        'An chưa có tiền để thanh toán hoặc ứng hộ đơn MH-203 hôm nay. An chỉ có thể hoàn lại tiền cho bà vào ngày mai.',
         'Bà Hạnh có thể chọn trả 186.000đ tiền mặt khi nhận đúng túi thuốc.',
-        'An không đủ tiền để tự ứng luôn đơn thuốc; nếu bà không hoàn lại tiền mặt thì An không thể chuyển khoản thay bà.',
+        'Nếu bà không muốn thanh toán, bà có thể nhắn Nhà thuốc Minh Tâm để hủy đơn. An không tự vay, xoay tiền hoặc gọi hộ.',
       ],
       forbiddenClaims: ['Không quyết định hộ Bà Hạnh hoặc Bảo.'],
       voiceExamples: [
@@ -348,8 +349,8 @@ export function collectNpcMemory(
         .filter(
           (message) =>
             message.author !== 'system' &&
-            message.id !== latestMessageId &&
-            message.responseMode !== 'fallback',
+            !message.npcIgnored &&
+            message.id !== latestMessageId,
         )
         .map((message, messageIndex) => ({
           from:
@@ -362,6 +363,7 @@ export function collectNpcMemory(
               ? (message.senderLabel ?? threadBinding(scenario, thread).name)
               : undefined,
           channelLabel: thread.title,
+          isRecovery: message.responseMode === 'fallback',
           minute: messageMinute(message.time),
           current: thread.id === currentThreadId ? 1 : 0,
           stableOrder:
@@ -375,15 +377,16 @@ export function collectNpcMemory(
 
   const currentTurns = turns.filter((turn) => turn.current);
   const otherTurns = turns.filter((turn) => !turn.current);
-  return [...otherTurns.slice(-4), ...currentTurns.slice(-8)]
+  return [...otherTurns.slice(-4), ...currentTurns.slice(-14)]
     .sort(
       (left, right) =>
         left.stableOrder - right.stableOrder || left.minute - right.minute,
     )
-    .map(({ from, text, senderLabel, channelLabel }) => ({
+    .map(({ from, text, senderLabel, channelLabel, isRecovery }) => ({
       from,
       text,
       senderLabel,
       channelLabel,
+      isRecovery,
     }));
 }

@@ -9,7 +9,11 @@ import {
   visiblePaymentRequests,
 } from './engine';
 import { collectNpcMemory } from './npc-agents';
-import { npcWorldRevision, validateNpcDirectorReply } from './npc-director';
+import {
+  npcWorldRevision,
+  npcReplyRejectionReason,
+  validateNpcDirectorReply,
+} from './npc-director';
 import { findPaymentArrangement } from './payment-arrangements';
 import { loadGameState } from './persistence';
 import { getScenario } from './scenarios';
@@ -420,7 +424,7 @@ function reachAnTask(runId = 'an-task') {
     'Cả nhà ăn cơm chưa?',
     'duplicate-two',
   );
-  assert.equal(duplicateAgain.pendingNpcTurns.length, 0);
+  assert.equal(duplicateAgain.pendingNpcTurns.length, 1);
   assert.equal(duplicateAgain.tick, duplicate.tick);
 }
 
@@ -746,8 +750,8 @@ function reachAnTask(runId = 'an-task') {
   );
   const noMoneyFailure = failPending(noMoney);
   const noMoneyFallback = noMoneyFailure.messages['hanh-an-real'].at(-1)?.text;
-  assert.match(noMoneyFallback ?? '', /không đủ tiền/i);
-  assert.match(noMoneyFallback ?? '', /thanh toán giúp con/i);
+  assert.match(noMoneyFallback ?? '', /(?:chưa có|không đủ) tiền/i);
+  assert.match(noMoneyFallback ?? '', /(?:thanh toán|trả tiền mặt|hủy đơn)/i);
   assert.doesNotMatch(noMoneyFallback ?? '', /dừng cách đó/i);
 
   let fraudNoMoney = reachAnRecruiter('director-fraud-no-money');
@@ -951,13 +955,13 @@ function reachAnTask(runId = 'an-task') {
   const fallbackText = afterFailure.messages['hanh-an-real'].at(-1)?.text;
   assert.ok(fallbackText);
   assert.ok(
-    !collectNpcMemory(
+    collectNpcMemory(
       afterFailure,
       scenario,
       'family.an',
       'hanh-an-real',
       '',
-    ).some((turn) => turn.text === fallbackText),
+    ).some((turn) => turn.text === fallbackText && turn.isRecovery),
   );
   afterFailure = send(
     afterFailure,
@@ -1565,61 +1569,32 @@ function reachAnTask(runId = 'an-task') {
     'cash-contact-turn',
   );
   const contactPending = contact.pendingNpcTurns[0];
-  assert.equal(
-    contactPending?.settlementOnReply?.optionId,
-    'hanh-an-pays-cash-back',
-  );
+  assert.equal(contactPending?.settlementOnReply, undefined);
   assert.equal(contactPending?.responseKind, 'ai');
-  assert.equal(contactPending?.directorPlan?.move, 'confirm');
+  assert.ok(
+    contactPending?.directorPlan?.sceneContracts?.some((contract) =>
+      contract.forbiddenActs.includes('npc-funds-current-order'),
+    ),
+  );
   assert.equal(contact.requestStatus['hanh-pay-pharmacy'], 'pending');
   assert.equal(currentBalance(contact, hanhScenario), initialBalance);
-  assert.strictEqual(gameReducer(contact, pay('hanh-pay-pharmacy')), contact);
-  const wrongRoleReply = replyAction(
-    contact,
-    'Dạ được bà, bà thanh toán 186.000đ tiền mặt khi nhận thuốc nha.',
-    'ai',
-  );
-  assert.strictEqual(gameReducer(contact, wrongRoleReply), contact);
-  const declinedWhileWaiting = gameReducer(
-    contact,
-    decline('hanh-pay-pharmacy'),
-  );
-  const cancelledAcceptance = gameReducer(
-    declinedWhileWaiting,
-    replyAction(
-      declinedWhileWaiting,
-      configuredSettlementReply(declinedWhileWaiting),
-      'ai',
-    ),
-  );
-  assert.equal(cancelledAcceptance.pendingNpcTurns.length, 0);
-  assert.equal(
-    cancelledAcceptance.messages['hanh-an-real'].at(-1)?.author,
-    'player',
-  );
-  assert.equal(
-    cancelledAcceptance.requestStatus['hanh-pay-pharmacy'],
-    'declined',
-  );
-  const contactReply = replyAction(
-    contact,
-    configuredSettlementReply(contact),
-    'ai',
-  );
-  contact = gameReducer(contact, contactReply);
-  assert.equal(contact.requestStatus['hanh-pay-pharmacy'], 'arranged');
-  assert.equal(
-    contact.requestArrangementOptionIds['hanh-pay-pharmacy'],
-    'hanh-an-pays-cash-back',
-  );
-  assert.equal(currentBalance(contact, hanhScenario), initialBalance);
-  assert.ok(
-    !contact.transactions.some(
-      (transaction) => transaction.requestId === 'hanh-pay-pharmacy',
-    ),
-  );
-  assert.strictEqual(gameReducer(contact, contactReply), contact);
-  assert.strictEqual(gameReducer(contact, pay('hanh-pay-pharmacy')), contact);
+  for (const impossible of [
+    'Con sẽ chuyển ngay rồi mai tính.',
+    'Con trả hộ bà và bà không cần hoàn lại.',
+    'Con có đủ tiền.',
+    'Con có thể gọi hộ nhà thuốc cho bà.',
+  ]) {
+    assert.equal(
+      validateNpcDirectorReply({
+        plan: contactPending.directorPlan!,
+        reply: impossible,
+        move: 'answer',
+        factIdsUsed: [],
+      }),
+      false,
+      impossible,
+    );
+  }
 
   let cashOnDelivery = start('hanh', 'cash-delivery');
   cashOnDelivery = gameReducer(cashOnDelivery, {
@@ -1711,10 +1686,7 @@ function reachAnTask(runId = 'an-task') {
     'cash-family-an-turn',
   );
   assert.equal(familyAn.pendingNpcTurns[0]?.agentId, 'family.an');
-  assert.equal(
-    familyAn.pendingNpcTurns[0]?.settlementOnReply?.optionId,
-    'hanh-an-pays-cash-back',
-  );
+  assert.equal(familyAn.pendingNpcTurns[0]?.settlementOnReply, undefined);
   const familyBao = send(
     start('hanh', 'cash-family-bao'),
     'hanh-family',
@@ -1856,6 +1828,39 @@ function reachAnTask(runId = 'an-task') {
     )?.browserLink?.cardId,
     'bao-web-vote',
   );
+  values.set(
+    'three-screens:session:v3',
+    JSON.stringify({
+      ...pendingState,
+      requestStatus: {
+        ...pendingState.requestStatus,
+        'hanh-pay-pharmacy': 'arranged',
+      },
+      requestArrangementOptionIds: {
+        'hanh-pay-pharmacy': 'hanh-an-pays-cash-back',
+      },
+      pendingNpcTurns: [
+        {
+          ...pendingState.pendingNpcTurns[0],
+          settlementOnReply: {
+            requestId: 'hanh-pay-pharmacy',
+            optionId: 'hanh-an-pays-cash-back',
+          },
+          responseGuidance: 'obsolete promise',
+        },
+      ],
+    }),
+  );
+  const migrated = loadGameState()!;
+  assert.equal(migrated.requestStatus['hanh-pay-pharmacy'], 'pending');
+  assert.equal(
+    migrated.requestArrangementOptionIds['hanh-pay-pharmacy'],
+    undefined,
+  );
+  assert.equal(migrated.pendingNpcTurns[0].settlementOnReply, undefined);
+  assert.equal(migrated.pendingNpcTurns[0].responseGuidance, undefined);
+  assert.deepEqual(migrated.messages, pendingState.messages);
+  assert.deepEqual(migrated.transactions, pendingState.transactions);
   Reflect.deleteProperty(globalThis, 'window');
 }
 
@@ -1951,13 +1956,24 @@ function reachAnTask(runId = 'an-task') {
   hanhCash = send(
     hanhCash,
     'hanh-an-real',
-    'An chuyển đúng 186.000đ hộ bà, về bà đưa lại con tiền mặt nhé.',
+    'Bà sẽ trả đúng 186.000đ tiền mặt khi nhận thuốc nhé.',
     'safe-hanh-cash-turn',
   );
   hanhCash = gameReducer(
     hanhCash,
     replyAction(hanhCash, configuredSettlementReply(hanhCash), 'ai'),
   );
+  if (hanhCash.pendingNpcTurns.length) {
+    const pending = hanhCash.pendingNpcTurns[0];
+    assert.fail(
+      npcReplyRejectionReason({
+        plan: pending.directorPlan!,
+        reply: configuredSettlementReply(hanhCash),
+        move: pending.directorPlan!.move,
+        factIdsUsed: pending.directorPlan!.requiredFactIds,
+      }) ?? 'cash turn not committed',
+    );
+  }
   hanhCash = act(
     hanhCash,
     call('hanh-call-an'),
@@ -1977,7 +1993,7 @@ function reachAnTask(runId = 'an-task') {
   );
   assert.ok(
     hanhCashDebrief?.timeline.some((item) =>
-      item.includes('hoàn lại An bằng tiền mặt'),
+      item.includes('tiền mặt khi nhận'),
     ),
   );
 
@@ -2072,6 +2088,189 @@ function reachAnTask(runId = 'an-task') {
   largeLoss = progressToEnding(largeLoss);
   assert.equal(finish(largeLoss).debrief?.ending, 'trusted-wrong');
   assert.equal(finish(largeLoss).debrief?.outcome, 'scammed');
+}
+
+// Screenshot regressions: natural follow-ups, bounded capabilities and real actions.
+{
+  const scenario = getScenario('hanh')!;
+  let conversation = start('hanh', 'free-dialogue');
+  const turns = [
+    [
+      'con tự chuyển khoản cho người ta được không',
+      'Dạ hôm nay con chưa có tiền. Bà trả giúp đơn này, mai con gửi lại bà nhé.',
+    ],
+    [
+      'bà làm gì có tiền đâu con',
+      'Dạ con cũng chưa có tiền để trả hộ. Nếu bà chưa thu xếp được thì bà nhắn nhà thuốc hủy đơn giúp con nhé.',
+    ],
+    [
+      'Vậy còn cách nào khác không?',
+      'Bà có thể trả tiền mặt lúc nhận. Nếu vẫn chưa tiện thì bà nhắn nhà thuốc hủy đơn nhé.',
+    ],
+    [
+      'Người ta đem thuốc tới rồi con ơi',
+      'Bà kiểm tra đúng túi tên Hạnh nhé. Nếu chưa thanh toán được thì bà báo nhà thuốc hủy đơn giúp con.',
+    ],
+  ];
+  for (const [index, [question, answer]] of turns.entries()) {
+    conversation = send(
+      conversation,
+      'hanh-an-real',
+      question,
+      `free-dialogue-${index}`,
+    );
+    const plan = conversation.pendingNpcTurns[0]?.directorPlan;
+    assert.ok(plan);
+    assert.equal(
+      validateNpcDirectorReply({
+        plan,
+        reply: answer,
+        move: 'answer',
+        factIdsUsed: plan.requiredFactIds,
+      }),
+      true,
+      answer,
+    );
+    conversation = gameReducer(conversation, {
+      ...replyAction(conversation, answer, 'ai'),
+      move: 'answer',
+    });
+    assert.equal(conversation.pendingNpcTurns.length, 0);
+    assert.equal(conversation.requestStatus['hanh-pay-pharmacy'], 'pending');
+  }
+  const recall = send(
+    conversation,
+    'hanh-an-real',
+    'Bảo vừa nhắn gì trong nhóm?',
+    'shared-recall-speaker',
+  );
+  const recallPlan = recall.pendingNpcTurns[0]!.directorPlan!;
+  assert.deepEqual(recallPlan.requiredFactIds, ['shared-dialogue:hm-family-1']);
+  assert.ok(
+    !recallPlan.factCatalog.some(
+      (fact) => fact.id === 'shared-dialogue:hm-family-2',
+    ),
+  );
+
+  let delivery = start('hanh', 'cancel-real');
+  delivery = gameReducer(delivery, {
+    type: 'OPEN_THREAD',
+    threadId: 'hanh-an-real',
+  });
+  delivery = messageBeat(delivery, 'hanh-an-real', 'cancel-reveal');
+  assert.ok(delivery.triggeredEventIds.includes('hanh-event-pharmacy'));
+  for (const [index, phrase] of [
+    'Cô không có tiền, hủy đơn giúp cô.',
+    'Đúng rồi, hủy đơn giúp cô.',
+    'Cô không muốn nhận nữa, hủy đơn đi.',
+  ].entries()) {
+    const cancellation = send(
+      delivery,
+      'hanh-pharmacy',
+      phrase,
+      `cancel-real-${index}`,
+    );
+    const plan = cancellation.pendingNpcTurns[0]!.directorPlan!;
+    assert.equal(plan.settlementMethod, 'cancel-order');
+    for (const wrong of [
+      'Dạ cô vẫn thanh toán như thường nhé.',
+      'Dạ cô cứ yên tâm nhé.',
+      'Dạ cô đợi nhận thuốc rồi trả tiền giúp nhà thuốc nhé.',
+    ])
+      assert.equal(
+        validateNpcDirectorReply({
+          plan,
+          reply: wrong,
+          move: 'confirm',
+          factIdsUsed: plan.requiredFactIds,
+        }),
+        false,
+        wrong,
+      );
+    assert.equal(
+      npcReplyRejectionReason({
+        plan,
+        reply: configuredSettlementReply(cancellation),
+        move: 'confirm',
+        factIdsUsed: plan.requiredFactIds,
+      }),
+      null,
+    );
+    const confirmed = gameReducer(
+      cancellation,
+      replyAction(cancellation, configuredSettlementReply(cancellation), 'ai'),
+    );
+    assert.equal(confirmed.requestStatus['hanh-pay-pharmacy'], 'cancelled');
+    assert.equal(
+      currentBalance(confirmed, scenario),
+      currentBalance(delivery, scenario),
+    );
+    assert.strictEqual(
+      gameReducer(confirmed, pay('hanh-pay-pharmacy')),
+      confirmed,
+    );
+  }
+  for (const [index, phrase] of [
+    'Nếu hủy đơn thì sao?',
+    'Cô không có tiền.',
+    'Đừng hủy đơn nhé.',
+    'Cô chưa muốn hủy đơn.',
+    'Hủy đơn được không?',
+    'Hủy đơn không',
+    'Có nên hủy đơn',
+  ].entries()) {
+    const question = send(
+      delivery,
+      'hanh-pharmacy',
+      phrase,
+      `not-cancel-${index}`,
+    );
+    assert.equal(
+      question.pendingNpcTurns[0]?.settlementOnReply,
+      undefined,
+      phrase,
+    );
+    assert.equal(question.requestStatus['hanh-pay-pharmacy'], 'pending');
+  }
+
+  const first = send(
+    start('hanh', 'burst'),
+    'hanh-an-real',
+    'Con tự thanh toán giúp bà nhé',
+    'burst-1',
+  );
+  const second = send(
+    first,
+    'hanh-an-real',
+    'Ý bà là bà chưa có tiền',
+    'burst-2',
+  );
+  assert.deepEqual(
+    second.pendingNpcTurns.map((turn) => turn.id),
+    ['burst-2'],
+  );
+  assert.strictEqual(
+    gameReducer(second, replyAction(first, 'Câu trả lời cũ', 'ai')),
+    second,
+  );
+  const duplicate = send(
+    second,
+    'hanh-an-real',
+    'Ý bà là bà chưa có tiền',
+    'burst-3',
+  );
+  assert.equal(duplicate.pendingNpcTurns[0]?.id, 'burst-2');
+  assert.equal(
+    npcWorldRevision(duplicate, scenario, duplicate.pendingNpcTurns[0]),
+    second.pendingNpcTurns[0]!.directorPlan!.baseRevision,
+  );
+  const number = send(
+    start('hanh', 'number'),
+    'hanh-an-real',
+    '000203018600',
+    'number-1',
+  );
+  assert.equal(number.pendingNpcTurns.length, 1);
 }
 
 console.log(

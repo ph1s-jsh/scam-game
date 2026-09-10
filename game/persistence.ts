@@ -181,6 +181,42 @@ export function loadGameState(): GameState | null {
               }))
           : [],
     } as GameState;
+    // Keep the user's transcript/progress while retiring arrangements that
+    // no longer exist in the canonical scenario (e.g. An paying upfront).
+    if (scenario) {
+      restored.requestStatus = { ...restored.requestStatus };
+      for (const [requestId, optionId] of Object.entries(
+        requestArrangementOptionIds,
+      )) {
+        const request = scenario.paymentRequests.find(
+          (item) => item.id === requestId,
+        );
+        if (!request?.alternatives?.some((option) => option.id === optionId)) {
+          delete requestArrangementOptionIds[requestId];
+          if (restored.requestStatus[requestId] === 'arranged')
+            restored.requestStatus[requestId] = 'pending';
+        }
+      }
+      restored.pendingNpcTurns = restored.pendingNpcTurns.map((pending) => {
+        const proposal = pending.settlementOnReply;
+        if (
+          !proposal ||
+          scenario.paymentRequests.some(
+            (request) =>
+              request.id === proposal.requestId &&
+              request.alternatives?.some(
+                (option) => option.id === proposal.optionId,
+              ),
+          )
+        )
+          return pending;
+        return {
+          ...pending,
+          settlementOnReply: undefined,
+          responseGuidance: undefined,
+        };
+      });
+    }
     return restoreConfiguredMessageLinks(restored);
   } catch {
     return null;

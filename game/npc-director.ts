@@ -3,7 +3,11 @@ import {
   getNpcAgent,
   threadSupportsAgent,
 } from './npc-agents';
-import { paymentRequestIsAvailable } from './payment-arrangements';
+import {
+  paymentRequestIsAvailable,
+  validatedPendingAlternative,
+} from './payment-arrangements';
+import { npcSceneContracts, sceneContractViolation } from './npc-scene';
 import type {
   GameState,
   NpcDirectorFact,
@@ -93,6 +97,9 @@ const COMMON_SENTENCE_NAMES = new Set([
   'bạn',
   'cảm',
   'chị',
+  'cô',
+  'bác',
+  'cháu',
   'con',
   'dạ',
   'em',
@@ -109,6 +116,11 @@ const COMMON_SENTENCE_NAMES = new Set([
   'tổng',
   'trạng',
   'trước',
+  'thanh',
+  'hãy',
+  'chỉ',
+  'số',
+  'đơn',
   'tôi',
   'vâng',
   'ừ',
@@ -230,10 +242,7 @@ function npcVisibleMemorySignature(
     .filter((thread) => threadSupportsAgent(scenario, thread, agentId))
     .flatMap((thread) =>
       (state.messages[thread.id] ?? [])
-        .filter(
-          (message) =>
-            message.author !== 'system' && message.responseMode !== 'fallback',
-        )
+        .filter((message) => message.author !== 'system' && !message.npcIgnored)
         .map((message) => [
           thread.id,
           message.id,
@@ -350,10 +359,10 @@ function knownEntityTokens(facts: NpcDirectorFact[]) {
 }
 
 function scopedSubjectsInClause(clause: string, knownEntities: Set<string>) {
-  const clauseWords = new Set(searchable(clause).split(/\s+/));
-  const subjects = [...knownEntities].filter((token) =>
-    clauseWords.has(searchable(token)),
-  );
+  // A proper name must remain a name in this sentence. Matching accentless
+  // ordinary words made "yên tâm" become Tâm and "ăn" become An.
+  const clauseWords = new Set(entityTokens(clause));
+  const subjects = [...knownEntities].filter((token) => clauseWords.has(token));
   const explicitSubject = clause
     .trim()
     .match(
@@ -366,6 +375,12 @@ function scopedSubjectsInClause(clause: string, knownEntities: Set<string>) {
     !knownEntities.has(explicitSubject)
   )
     return null;
+  if (
+    explicitSubject &&
+    knownEntities.has(explicitSubject) &&
+    !subjects.includes(explicitSubject)
+  )
+    subjects.push(explicitSubject);
   return subjects;
 }
 
@@ -397,7 +412,7 @@ function casedClaimClauses(value: string) {
   return value
     .normalize('NFC')
     .replace(/[!?;:。！？]+|[.,](?=\s|$)/g, '|')
-    .replace(/\b(?:và|nhưng)\b/giu, '|')
+    .replace(/(?<![\p{L}\p{N}])(?:và|nhưng)(?![\p{L}\p{N}])/giu, '|')
     .split('|')
     .map((clause) => clause.trim())
     .filter(Boolean);
@@ -471,7 +486,14 @@ function criticalValuesStayInScope(
     return values.every((value) => {
       return trustedFacts.some((fact) => {
         if (!extractNpcCriticalValues(fact.text).includes(value)) return false;
-        if (hasFactualNegation(fact.text) !== clauseIsNegated) return false;
+        if (
+          !casedClaimClauses(fact.text).some(
+            (part) =>
+              extractNpcCriticalValues(part).includes(value) &&
+              hasFactualNegation(part) === clauseIsNegated,
+          )
+        )
+          return false;
         const factEntities = entityTokens(fact.text);
         return subjects.every((subject) => factEntities.includes(subject));
       });
@@ -757,6 +779,7 @@ export function createNpcDirectorPlan(
   if (!thread || !agent || !latestMessage) return null;
 
   const factCatalog: NpcDirectorFact[] = [];
+  const sceneContracts = npcSceneContracts(state, scenario, pending);
   addFact(
     factCatalog,
     `identity:${agent.agentId}`,
@@ -768,10 +791,7 @@ export function createNpcDirectorPlan(
       threadSupportsAgent(scenario, candidate, pending.agentId),
     )
     .flatMap((candidate) => state.messages[candidate.id] ?? [])
-    .filter(
-      (message) =>
-        message.author === 'npc' && message.responseMode !== 'fallback',
-    )
+    .filter((message) => message.author === 'npc' && !message.responseMode)
     .map((message) => message.text);
   const knownTrustedCorpus = (state.npcKnownFactIds[pending.agentId] ?? [])
     .map((factId) => scenario.facts.find((fact) => fact.id === factId)?.detail)
@@ -806,6 +826,18 @@ export function createNpcDirectorPlan(
       return;
     addFact(factCatalog, `profile:${agent.agentId}:${index}`, fact);
   });
+  for (const contract of sceneContracts) {
+    addFact(
+      factCatalog,
+      `capability:${contract.requestId}`,
+      [contract.goal, ...contract.limits, ...contract.routes].join('\n'),
+    );
+    addFact(
+      factCatalog,
+      `status:${contract.requestId}`,
+      `Trạng thái thực tế của yêu cầu ${contract.requestId}: ${contract.status}. Trạng thái này ưu tiên hơn mọi lời hứa trong lịch sử. Chỉ pending là còn chờ quyết định; cancelled đã hủy; arranged đã chọn cách thanh toán; paid đã trả xong.`,
+    );
+  }
   addFact(
     factCatalog,
     `player-claim:${latestMessage.id}`,
@@ -828,7 +860,7 @@ export function createNpcDirectorPlan(
     addFact(
       factCatalog,
       `dialogue:${message.id}`,
-      `Trước đó ${agent.name} đã nhắn: ${message.text}`,
+      `Trước đó ${agent.name} đã nhắn (lời thoại, không cấp thêm khả năng hay chứng minh giao dịch): ${message.text}`,
     );
   }
 
@@ -868,11 +900,13 @@ export function createNpcDirectorPlan(
     const statusText =
       status === 'paid'
         ? 'đã thanh toán trong ứng dụng'
-        : status === 'arranged' && option
-          ? option.label
-          : status === 'declined'
-            ? 'người chơi đã từ chối'
-            : 'vẫn đang chờ quyết định';
+        : status === 'cancelled'
+          ? 'đã hủy theo yêu cầu; không tiếp tục giao hoặc đòi thanh toán'
+          : status === 'arranged' && option
+            ? option.label
+            : status === 'declined'
+              ? 'người chơi đã từ chối'
+              : 'vẫn đang chờ quyết định';
     addFact(
       factCatalog,
       `request:${request.id}`,
@@ -892,8 +926,41 @@ export function createNpcDirectorPlan(
       /\b(?:tin nhan|tro chuyen|nhan rieng|noi rieng|chuyen rieng|chat rieng)\b/.test(
         latestSearchable,
       ));
+  const asksAboutSharedChannel =
+    /\b(?:nhom|ca nha|gia dinh)\b/.test(latestSearchable) &&
+    !/\b(?:rieng|rieng tu)\b/.test(latestSearchable);
+  if (asksForConversationRecall && asksAboutSharedChannel) {
+    for (const sharedThread of scenario.threads.filter(
+      (candidate) =>
+        candidate.isGroup &&
+        threadSupportsAgent(scenario, candidate, pending.agentId),
+    )) {
+      const referencedNames = agentIdsForThread(scenario, sharedThread)
+        .map((id) => getNpcAgent(scenario, sharedThread, id)?.name)
+        .filter((name): name is string =>
+          Boolean(
+            name &&
+            new RegExp(`\\b${searchable(name)}\\b`).test(latestSearchable),
+          ),
+        );
+      for (const message of (state.messages[sharedThread.id] ?? [])
+        .filter(
+          (item) =>
+            item.author === 'npc' &&
+            (!referencedNames.length ||
+              referencedNames.includes(item.senderLabel ?? '')),
+        )
+        .slice(-4))
+        addFact(
+          factCatalog,
+          `shared-dialogue:${message.id}`,
+          `Trong nhóm ${sharedThread.title}, ${message.senderLabel ?? 'thành viên'} đã nói: ${message.text}`,
+        );
+    }
+  }
   const asksAboutAnotherNpc =
     asksForConversationRecall &&
+    !asksAboutSharedChannel &&
     mentionsAnotherNpc(scenario, agent.agentId, agent.name, latestMessage.text);
   const knowledgeBoundaryFactId = `knowledge-boundary:${pending.id}`;
   if (asksAboutAnotherNpc)
@@ -934,7 +1001,11 @@ export function createNpcDirectorPlan(
       : isConversationRecallQuestion
         ? [...trustedFacts]
             .reverse()
-            .find((fact) => fact.id.startsWith('dialogue:'))
+            .find((fact) =>
+              fact.id.startsWith(
+                asksAboutSharedChannel ? 'shared-dialogue:' : 'dialogue:',
+              ),
+            )
         : trustedFacts.find((fact) =>
             factRelatesToMessage(latestMessage.text, fact.text),
           );
@@ -945,6 +1016,13 @@ export function createNpcDirectorPlan(
   const previousDialogueFact = [...trustedFacts]
     .reverse()
     .find((fact) => fact.id.startsWith('dialogue:'));
+  const isContextualFollowup =
+    /\b(?:vay|the|cach nao|cach khac|roi sao|lam sao|don|thuoc|nguoi giao|shipper|dem.*toi|nhan hang|ngta|giu[mn]|giup|cuu|khong.*tien|tien.*dau|y la)\b/.test(
+      latestSearchable,
+    ) || /^[?？]+$/.test(latestMessage.text.trim());
+  const sceneIsRelevant =
+    !asksAboutAnotherNpc &&
+    (sensitiveTopics(latestMessage.text).length > 0 || isContextualFollowup);
   if (move === 'answer' && !relevantFact) move = 'clarify';
   const requiredFactIds = pending.settlementOnReply
     ? [`instruction:${pending.id}`]
@@ -970,6 +1048,14 @@ export function createNpcDirectorPlan(
       .filter((fact) => requiredFactIds.includes(fact.id))
       .map((fact) => fact.text),
     latestIsShortContinuation ? previousDialogueFact?.text : undefined,
+    isContextualFollowup && !asksAboutAnotherNpc
+      ? previousDialogueFact?.text
+      : undefined,
+    sceneIsRelevant
+      ? sceneContracts
+          .flatMap((contract) => [contract.goal, ...contract.routes])
+          .join('\n')
+      : undefined,
   ]
     .filter(Boolean)
     .join('\n');
@@ -978,14 +1064,14 @@ export function createNpcDirectorPlan(
     ? ('coercive' as const)
     : pending.agentId.startsWith('service.')
       ? ('procedural' as const)
-      : scenario.id === 'hanh' &&
-          pending.agentId === 'family.an' &&
-          pending.threadId === 'hanh-an-real' &&
-          allowedSensitiveTopics.includes('payment')
+      : sceneContracts.some((contract) => contract.status === 'pending') &&
+          sceneIsRelevant
         ? ('persistent' as const)
         : ('supportive' as const);
 
   const contract = {
+    settlementMethod: validatedPendingAlternative(state, scenario, pending)
+      ?.option.method,
     move,
     factCatalog,
     requiredFactIds,
@@ -1000,6 +1086,7 @@ export function createNpcDirectorPlan(
     mayClaimPaymentCompleted,
     recentNpcReplies: recentNpcMessages.map((message) => message.text),
     interactionMode,
+    sceneContracts: asksAboutAnotherNpc ? [] : sceneContracts,
   };
   const baseRevision = `${state.runId}:${pending.id}:${revisionHash(
     JSON.stringify({
@@ -1011,20 +1098,23 @@ export function createNpcDirectorPlan(
   return { baseRevision, ...contract };
 }
 
-export function validateNpcDirectorReply(input: {
+export function npcReplyRejectionReason(input: {
   plan: NpcDirectorPlan;
   reply: string;
   move: NpcDirectorMove;
   factIdsUsed: string[];
 }) {
   const { plan, reply, move } = input;
-  if (!reply.trim() || !moveFitsPlan(plan.move, move)) return false;
+  if (!reply.trim() || !moveFitsPlan(plan.move, move))
+    return 'Lời thoại trống hoặc kiểu phản hồi không khớp hành động đã duyệt.';
+  const capabilityError = sceneContractViolation(reply, plan.sceneContracts);
+  if (capabilityError) return capabilityError;
   if (
     (plan.recentNpcReplies ?? []).some(
       (previousReply) => searchable(previousReply) === searchable(reply),
     )
   )
-    return false;
+    return 'Đang lặp nguyên câu trước. Trả lời ý mới hoặc giải thích phần người chơi chưa hiểu bằng lời khác.';
 
   const factIdsUsed = unique(input.factIdsUsed);
   const allowedFactIds = new Set(plan.factCatalog.map((fact) => fact.id));
@@ -1035,10 +1125,11 @@ export function validateNpcDirectorReply(input: {
     (factIdsUsed.some((factId) => !allowedFactIds.has(factId)) ||
       plan.requiredFactIds.some((factId) => !factIdsUsed.includes(factId)))
   )
-    return false;
+    return 'Dấu vết dữ kiện không khớp. Chỉ dùng ID có trong danh mục và giữ đủ ID bắt buộc cho hành động đã duyệt.';
 
+  // Dialogue records what was said, not proof that a transfer or offscreen act happened.
   const trustedFacts = plan.factCatalog.filter(
-    (fact) => !fact.id.startsWith('player-claim:'),
+    (fact) => !/^(?:player-claim|dialogue|shared-dialogue):/.test(fact.id),
   );
   const playerClaims = plan.factCatalog.filter((fact) =>
     fact.id.startsWith('player-claim:'),
@@ -1049,15 +1140,16 @@ export function validateNpcDirectorReply(input: {
       (value) => !replyCriticalValues.includes(value),
     )
   )
-    return false;
+    return 'Thiếu giá trị bắt buộc của hành động đã duyệt. Giữ đúng số tiền/mã được yêu cầu.';
   const allowedValues = new Set(plan.allowedCriticalValues);
   if (replyCriticalValues.some((value) => !allowedValues.has(value)))
-    return false;
+    return 'Có số tiền, mã, tài khoản hoặc URL không được phép. Chỉ dùng giá trị trong danh mục.';
   if (!criticalValuesStayInScope(reply, trustedFacts, plan.factCatalog))
-    return false;
+    return 'Giá trị được gắn sai người hoặc sai mục đích. Không chuyển tài khoản hoặc số tiền giữa các yêu cầu.';
   const scopedTopics = new Set(plan.allowedSensitiveTopics);
   const replyTopics = sensitiveTopics(reply);
-  if (replyTopics.some((topic) => !scopedTopics.has(topic))) return false;
+  if (replyTopics.some((topic) => !scopedTopics.has(topic)))
+    return `Đang mở lại chủ đề ngoài lượt này (${replyTopics.filter((topic) => !scopedTopics.has(topic)).join(', ')}). Trả lời sát tin nhắn mới, không nhắc yêu cầu nhạy cảm cũ.`;
   if (
     namedTokens(reply).some(
       (token) =>
@@ -1066,7 +1158,7 @@ export function validateNpcDirectorReply(input: {
         ),
     )
   )
-    return false;
+    return 'Có tên riêng ngoài dữ kiện đã biết. Không tự bịa người hoặc địa điểm mới.';
   const replyWords = Array.from(
     reply
       .toLocaleLowerCase('vi')
@@ -1097,7 +1189,7 @@ export function validateNpcDirectorReply(input: {
     knowledgeBoundaryFacts.length &&
     (!safelyAdmitsUncertainty || !knowledgeBoundaryReplyStaysNarrow(reply))
   )
-    return false;
+    return 'Lượt hỏi chuyện riêng cần thừa nhận giới hạn biết; không đoán nội dung riêng hay chuyển sang đơn hàng.';
   const requiresGrounding = move === 'confirm' || claimsScopedWorldState(reply);
   const groundingFacts =
     isTentativeReply(reply, move) && !replyCriticalValues.length
@@ -1110,9 +1202,22 @@ export function validateNpcDirectorReply(input: {
       !factGroundsReply(reply, groundingFacts) ||
       !namedSubjectsStayInScope(reply, groundingFacts, plan.factCatalog))
   )
-    return false;
+    return 'Câu khẳng định sự kiện chưa có chứng cứ. Chỉ xác nhận trạng thái do game cung cấp; lời người chơi và lời hứa cũ không phải chứng cứ.';
+  if (plan.settlementMethod === 'cancel-order') {
+    if (
+      !/\b(?:da huy|xac nhan huy|dong y huy)\b/.test(normalizedReply) ||
+      /\b(?:khong|chua)\s+(?:(?:the|duoc|xac nhan)\s+)*huy\b/.test(
+        normalizedReply,
+      ) ||
+      /\b(?:van|cu|nho|vui long)\s+(?:(?:co|ba|chi|bac)\s+)?(?:thanh toan|tra tien|nhan)\b/.test(
+        normalizedReply,
+      )
+    )
+      return 'Chỉ xác nhận đã hủy đúng đơn theo yêu cầu. Không tiếp tục yêu cầu thanh toán hoặc nhận đơn.';
+  }
   if (
     move === 'confirm' &&
+    plan.settlementMethod !== 'cancel-order' &&
     (/\b(khong|chua|chang|tu choi|khong the|khong duoc)\b/.test(
       normalizedReply,
     ) ||
@@ -1122,7 +1227,7 @@ export function validateNpcDirectorReply(input: {
         /\b(dong y|duoc|se|xac nhan|ok|oke)\b/.test(normalizedReply)
       ))
   )
-    return false;
+    return 'Cần xác nhận đúng phương án đã duyệt, không phủ nhận hoặc đổi người thanh toán.';
   if (
     !plan.mayClaimPaymentCompleted &&
     claimsCompletion &&
@@ -1133,6 +1238,12 @@ export function validateNpcDirectorReply(input: {
         topic === 'payment',
     )
   )
-    return false;
-  return true;
+    return 'Chưa có thanh toán trong game. Không nói đã nhận/chuyển/trả xong.';
+  return null;
+}
+
+export function validateNpcDirectorReply(
+  input: Parameters<typeof npcReplyRejectionReason>[0],
+) {
+  return npcReplyRejectionReason(input) === null;
 }

@@ -48,6 +48,8 @@ const toxicLanguage =
 function looksLikeNoise(value: string) {
   const compact = value.replace(/\s/g, '');
   if (!compact) return true;
+  if (/^\d{4,20}$/.test(compact)) return false;
+  if (/^[?？!！]+$/.test(compact)) return false;
   if (/^(.)\1{5,}$/u.test(compact)) return true;
   if (/^[^\p{L}\p{N}]{2,}$/u.test(compact)) return true;
 
@@ -95,7 +97,12 @@ export function planNpcResponse(input: {
   const lastNpcMessage = [...(state.messages[thread.id] ?? [])]
     .reverse()
     .find((message) => message.author === 'npc');
-  const duplicate = previousPlayerMessages
+  const lastNpcIndex = (state.messages[thread.id] ?? []).findLastIndex(
+    (message) => message.author === 'npc',
+  );
+  const duplicate = (state.messages[thread.id] ?? [])
+    .slice(lastNpcIndex + 1)
+    .filter((message) => message.author === 'player')
     .slice(-3)
     .some((message) => normalized(message.text) === value);
 
@@ -195,7 +202,7 @@ export function planNpcResponse(input: {
   }
 
   const shortStatement = value.split(/\s+/).length <= 3 && !/[?？]/u.test(text);
-  if (shortStatement && stableNumber(`${turnId}:short`) % 3 === 0) {
+  if (shortStatement && /^(?:haha|hihi|kk+)$/.test(value)) {
     return {
       disposition: 'seen',
       deliveryStatus: 'seen',

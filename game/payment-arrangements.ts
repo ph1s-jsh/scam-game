@@ -80,9 +80,31 @@ function matchesTrustedContactCash(value: string) {
 function triggerMatches(option: PaymentAlternative, text: string) {
   const value = searchable(text);
   if (!value) return false;
+  // Inspect the action clause, not unrelated reasons such as "không có tiền".
+  if (option.trigger === 'cancel-order') {
+    if (
+      /[?？]/u.test(text) ||
+      /\b(?:neu|gia su|duoc khong|dc k|co the|co nen)\b/.test(value) ||
+      /\b(?:khong|ko|kh|k|chua)$/.test(value)
+    )
+      return false;
+    return text.split(/[,.!;\n]+/).some((clause) => {
+      const action = searchable(clause);
+      return (
+        /\b(?:huy don|huy giup|khong nhan don|khong nhan thuoc)\b/.test(
+          action,
+        ) &&
+        !/\b(?:khong|chua|dung)\s+(?:(?:muon|can|nen|voi)\s+)*huy\b/.test(
+          action,
+        ) &&
+        !/\b(?:chua|dung)\s+khong nhan\b/.test(action)
+      );
+    });
+  }
+  if (/\b(?:neu|gia su)\b/.test(value) || /[?？]/u.test(text)) return false;
   return option.trigger === 'trusted-contact-cash'
     ? matchesTrustedContactCash(value)
-    : matchesCashPayment(value);
+    : !matchesTrustedContactCash(value) && matchesCashPayment(value);
 }
 
 export function paymentAlternativeFor(
@@ -100,7 +122,7 @@ export function paymentAlternativeFor(
 }
 
 export function requestIsHandled(status: RequestStatus | undefined) {
-  return status === 'paid' || status === 'arranged';
+  return status === 'paid' || status === 'arranged' || status === 'cancelled';
 }
 
 export function selectedPaymentAlternative(
@@ -125,13 +147,17 @@ export function findPaymentArrangement(input: {
   for (const request of scenario.paymentRequests) {
     if (
       request.truth !== 'legit' ||
-      state.requestStatus[request.id] !== 'pending'
+      !['pending', 'arranged'].includes(state.requestStatus[request.id])
     )
       continue;
     for (const option of request.alternatives ?? []) {
       if (
         option.threadIds.includes(threadId) &&
         option.agentIds.includes(agentId) &&
+        (state.requestStatus[request.id] === 'pending' ||
+          option.method === 'cancel-order') &&
+        (option.method !== 'cancel-order' ||
+          paymentRequestIsAvailable(request, state)) &&
         triggerMatches(option, text)
       )
         return { requestId: request.id, optionId: option.id };
@@ -160,7 +186,11 @@ export function validatedPendingAlternative(
     !playerMessage ||
     playerMessage.author !== 'player' ||
     configured.request.truth !== 'legit' ||
-    state.requestStatus[configured.request.id] !== 'pending' ||
+    (state.requestStatus[configured.request.id] !== 'pending' &&
+      !(
+        configured.option.method === 'cancel-order' &&
+        state.requestStatus[configured.request.id] === 'arranged'
+      )) ||
     !configured.option.threadIds.includes(pending.threadId) ||
     !configured.option.agentIds.includes(pending.agentId) ||
     !triggerMatches(configured.option, playerMessage.text)

@@ -108,9 +108,9 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
         allowedFacts: [
           'Đơn thuốc 186.000đ.',
           'Nhà thuốc Minh Tâm giao tối nay.',
-          'Nếu Bà Hạnh nhờ rõ ràng, An có thể chuyển đúng 186.000đ cho đơn MH-203 rồi nhận lại tiền mặt từ bà.',
+          'An chưa có tiền để thanh toán hay ứng hộ đơn MH-203 hôm nay. Ngày mai An mới có tiền hoàn lại cho bà.',
           'Bà Hạnh cũng có thể thanh toán 186.000đ tiền mặt khi nhận đúng đơn thuốc.',
-          'An không đủ tiền để tự ứng luôn đơn thuốc; nếu bà không hoàn lại tiền mặt thì An không thể chuyển khoản thay bà.',
+          'Nếu bà không muốn thanh toán, bà có thể yêu cầu Nhà thuốc Minh Tâm hủy đơn; An không tự vay tiền, trả hộ hoặc gọi hủy hộ.',
           'An không đổi số và không nhờ đóng học phí.',
         ],
         forbiddenClaims: ['Không xin thêm tiền.', 'Không nói mình đã về nhà.'],
@@ -303,19 +303,36 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
           'Nhà thuốc đã nhận 186.000đ. Cảm ơn cô, cô nhớ kiểm tra đúng tên trên túi thuốc ạ.',
         onPartialMessage:
           'Hệ thống mới ghi nhận một phần thanh toán. Đơn MH-203 vẫn còn thiếu {remaining}.',
+        dialoguePolicy: {
+          threadIds: ['hanh-an-real', 'hanh-family'],
+          agentIds: ['family.an'],
+          goal: 'Nhờ bà tự thanh toán đơn thuốc thật khi nhận đúng túi; An hoàn lại bà vào ngày mai.',
+          limits: [
+            'Hôm nay An không có tiền và không thể chuyển khoản, ứng hộ, gửi tiền hoặc xoay tiền ngay, dù bà hứa hoàn lại.',
+            'An chỉ có thể hẹn hoàn lại ngày mai. Không biến lời hứa thành giao dịch đã xảy ra.',
+            'Không biết số dư riêng của bà; bà nói không có tiền là lời bà nói, không được khẳng định bà nói dối hay tự xem tài khoản bà.',
+            'Không có cơ chế tự gọi hộ, vay hộ, gặp shipper hộ hoặc tìm tiền ngoài màn hình.',
+          ],
+          routes: [
+            'Bà tự nhập thông tin chuyển khoản trong ngân hàng mô phỏng hoặc chọn trả tiền mặt khi nhận đúng đơn.',
+            'Nếu bà không thể hoặc không muốn trả: giải thích An cũng thiếu tiền, rồi gợi ý bà nhắn nhà thuốc để hủy đơn. Không hủy chỉ vì bà đang hỏi hay nói không có tiền.',
+            'Nếu người chơi nhờ An trả: giải thích giới hạn, hẹn ngày mai hoàn lại và nhờ bà xử lý đơn hiện tại; giữ cách xưng hô tự nhiên.',
+          ],
+          forbiddenActs: ['npc-funds-current-order', 'invent-offscreen-action'],
+        },
         alternatives: [
           {
-            id: 'hanh-an-pays-cash-back',
-            method: 'trusted-contact',
-            trigger: 'trusted-contact-cash',
-            threadIds: ['hanh-an-real', 'hanh-family'],
-            agentIds: ['family.an'],
+            id: 'hanh-pharmacy-cancel',
+            method: 'cancel-order',
+            trigger: 'cancel-order',
+            threadIds: ['hanh-pharmacy'],
+            agentIds: ['service.minh-tam'],
             label:
-              'An nhận lời thanh toán đúng 186.000đ cho đơn MH-203; Bà Hạnh hoàn lại An bằng tiền mặt.',
+              'Bà Hạnh chủ động hủy đơn MH-203 với nhà thuốc. Không trừ tiền.',
             npcGuidance:
-              'Bộ máy game đã xác nhận Bà Hạnh đang đề nghị An thanh toán hộ đúng 186.000đ cho đơn MH-203 và sẽ đưa lại An tiền mặt. An đồng ý rõ ràng, nhắc đúng số tiền và không đổi sang phương án khác.',
+              'Người chơi đã yêu cầu hủy rõ ràng; bộ máy game đã duyệt hủy đơn MH-203. Nhà thuốc xác nhận đã hủy đơn MH-203 theo yêu cầu của cô. Cô không cần thanh toán đơn này nữa. Nhà thuốc không giao đơn này nữa.',
             fallbackReply:
-              'Dạ được bà. Con thanh toán đúng 186.000đ cho đơn MH-203, lát về bà đưa lại con tiền mặt nha.',
+              'Dạ nhà thuốc đã hủy đơn MH-203 theo yêu cầu của cô. Cô không cần thanh toán đơn này nữa ạ.',
           },
           {
             id: 'hanh-pharmacy-cash-on-delivery',

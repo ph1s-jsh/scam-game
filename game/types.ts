@@ -39,14 +39,20 @@ export type EndingId =
   | 'false-positive'
   | 'trusted-wrong';
 
-export type RequestStatus = 'pending' | 'paid' | 'arranged' | 'declined';
+export type RequestStatus =
+  | 'pending'
+  | 'paid'
+  | 'arranged'
+  | 'declined'
+  | 'cancelled';
 
 export type PaymentChannel = 'transfer' | 'bill' | 'topup';
 
 export type PaymentAlternativeMethod =
   | 'cash-on-delivery'
   | 'cash-at-counter'
-  | 'trusted-contact';
+  | 'trusted-contact'
+  | 'cancel-order';
 
 export type StoryCondition =
   | { type: 'event'; eventId: string }
@@ -94,6 +100,7 @@ export interface GameMessage {
   agentId?: string;
   responseMode?: NpcReplyMode;
   deliveryStatus?: MessageDeliveryStatus;
+  npcIgnored?: boolean;
   text: string;
   time: string;
   browserLink?: {
@@ -182,12 +189,20 @@ export interface PaymentRequest {
   onPaidThreadId?: string;
   onPartialMessage?: string;
   alternatives?: PaymentAlternative[];
+  dialoguePolicy?: {
+    threadIds: string[];
+    agentIds: string[];
+    goal: string;
+    limits: string[];
+    routes: string[];
+    forbiddenActs: string[];
+  };
 }
 
 export interface PaymentAlternative {
   id: string;
   method: PaymentAlternativeMethod;
-  trigger: 'cash-payment' | 'trusted-contact-cash';
+  trigger: 'cash-payment' | 'trusted-contact-cash' | 'cancel-order';
   threadIds: string[];
   agentIds: string[];
   label: string;
@@ -261,7 +276,17 @@ export interface NpcDirectorFact {
   text: string;
 }
 
+export interface NpcSceneContract {
+  requestId: string;
+  status: RequestStatus;
+  goal: string;
+  limits: string[];
+  routes: string[];
+  forbiddenActs: string[];
+}
+
 export interface NpcDirectorPlan {
+  settlementMethod?: PaymentAlternativeMethod;
   baseRevision: string;
   move: NpcDirectorMove;
   factCatalog: NpcDirectorFact[];
@@ -272,6 +297,7 @@ export interface NpcDirectorPlan {
   mayClaimPaymentCompleted: boolean;
   recentNpcReplies: string[];
   interactionMode: 'supportive' | 'procedural' | 'persistent' | 'coercive';
+  sceneContracts?: NpcSceneContract[];
 }
 
 export interface PendingNpcTurn {

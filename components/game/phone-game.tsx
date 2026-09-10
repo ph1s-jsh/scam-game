@@ -63,6 +63,7 @@ import {
 import { collectNpcMemory, getNpcAgent } from '@/game/npc-agents';
 import {
   npcWorldRevision,
+  npcReplyRejectionReason,
   validateNpcDirectorReply,
 } from '@/game/npc-director';
 import { selectedPaymentAlternative } from '@/game/payment-arrangements';
@@ -95,6 +96,7 @@ import {
   getFirebaseAiFailureDiagnostic,
   getLocalAppCheckDebugToken,
 } from '@/lib/firebase-ai';
+import { generateCheckedNpcReply } from '@/lib/npc-generation';
 
 const characterIcons: Record<CharacterId, LucideIcon> = {
   hanh: UserRound,
@@ -741,9 +743,6 @@ function ChatThread({
   const shouldStickToBottomRef = useRef(true);
   const [showNewMessage, setShowNewMessage] = useState(false);
   const messages = state.messages[thread.id] ?? [];
-  const isPending = state.pendingNpcTurns.some(
-    (pending) => pending.threadId === thread.id,
-  );
   const isBlocked = state.blockedThreadIds.includes(thread.id);
   const isReported = state.reportedThreadIds.includes(thread.id);
   const threadIdentity = identityForThread(scenario.id, thread.id);
@@ -759,7 +758,7 @@ function ChatThread({
 
   const send = () => {
     const text = draft.trim();
-    if (!text || isPending || isBlocked) return;
+    if (!text || isBlocked) return;
     dispatch({
       type: 'SEND_MESSAGE',
       threadId: thread.id,
@@ -983,7 +982,7 @@ function ChatThread({
               <button
                 aria-label="Gửi tin nhắn"
                 className="grid size-11 place-items-center rounded-full bg-blue-600 text-white disabled:opacity-40"
-                disabled={!draft.trim() || isPending}
+                disabled={!draft.trim() || isBlocked}
                 onClick={send}
                 type="button"
               >
@@ -2136,7 +2135,7 @@ export function PhoneGame() {
   const stateRef = useRef(state);
   const startedTurnIdsRef = useRef(new Set<string>());
   const turnTimerRefs = useRef(new Map<string, number>());
-  const activePersonaIdsRef = useRef(new Set<string>());
+  const activePersonaIdsRef = useRef(new Map<string, string>());
   const appCheckSetupDismissedRef = useRef(false);
 
   useEffect(() => {
@@ -2157,6 +2156,23 @@ export function PhoneGame() {
   }, [hydrated, state]);
 
   useEffect(() => {
+    const liveIds = new Set(state.pendingNpcTurns.map((turn) => turn.id));
+    const cleanupTypingTimer = window.setTimeout(() => {
+      setTypingTurnIds((previous) => {
+        if ([...previous].every((id) => liveIds.has(id))) return previous;
+        return new Set([...previous].filter((id) => liveIds.has(id)));
+      });
+    }, 0);
+    for (const [scope, owner] of activePersonaIdsRef.current) {
+      if (!liveIds.has(owner)) activePersonaIdsRef.current.delete(scope);
+    }
+    for (const startedId of startedTurnIdsRef.current) {
+      if (liveIds.has(startedId)) continue;
+      startedTurnIdsRef.current.delete(startedId);
+      const timer = turnTimerRefs.current.get(startedId);
+      if (timer) window.clearTimeout(timer);
+      turnTimerRefs.current.delete(startedId);
+    }
     const runPendingTurn = (turnId: string) => {
       const latestState = stateRef.current;
       const pending = latestState.pendingNpcTurns.find(
@@ -2214,7 +2230,7 @@ export function PhoneGame() {
         turnTimerRefs.current.set(pending.id, retryTimer);
         return;
       }
-      activePersonaIdsRef.current.add(pending.memoryScopeId);
+      activePersonaIdsRef.current.set(pending.memoryScopeId, pending.id);
 
       setTypingTurnIds((current) => new Set(current).add(pending.id));
       const clearTyping = () =>
@@ -2224,7 +2240,10 @@ export function PhoneGame() {
           return next;
         });
       const releasePersona = () => {
-        activePersonaIdsRef.current.delete(pending.memoryScopeId);
+        if (
+          activePersonaIdsRef.current.get(pending.memoryScopeId) === pending.id
+        )
+          activePersonaIdsRef.current.delete(pending.memoryScopeId);
       };
 
       if (pending.responseKind === 'local' && pending.localReply) {
@@ -2275,23 +2294,50 @@ export function PhoneGame() {
         thread.id,
         latest.id,
       );
-      void generateFirebaseNpcReply({
-        personaId: pending.memoryScopeId,
-        npcName: agent.name,
-        playerRole: `${scenario.profile.name}, ${scenario.profile.age}, ${scenario.profile.role}`,
-        roleBrief: agent.roleBrief,
-        plannedMove: directorPlan.move,
-        factCatalog: directorPlan.factCatalog,
-        requiredFactIds: directorPlan.requiredFactIds,
-        requiredCriticalValues: directorPlan.requiredCriticalValues,
-        forbiddenClaims: agent.forbiddenClaims,
-        voiceExamples: agent.voiceExamples,
-        participantLabel: pending.senderLabel,
-        latestMessage: latest.text,
-        history: isolatesPrivateConversation ? [] : npcMemory,
-        recentNpcReplies: directorPlan.recentNpcReplies,
-        interactionMode: directorPlan.interactionMode,
-      })
+      void generateCheckedNpcReply(
+        (repair) =>
+          generateFirebaseNpcReply({
+            personaId: pending.memoryScopeId,
+            npcName: agent.name,
+            playerRole: `${scenario.profile.name}, ${scenario.profile.age}, ${scenario.profile.role}`,
+            roleBrief: agent.roleBrief,
+            plannedMove: directorPlan.move,
+            factCatalog: directorPlan.factCatalog,
+            requiredFactIds: directorPlan.requiredFactIds,
+            requiredCriticalValues: directorPlan.requiredCriticalValues,
+            forbiddenClaims: agent.forbiddenClaims,
+            voiceExamples: agent.voiceExamples,
+            participantLabel: pending.senderLabel,
+            latestMessage: latest.text,
+            history: isolatesPrivateConversation ? [] : npcMemory,
+            recentNpcReplies: directorPlan.recentNpcReplies,
+            interactionMode: directorPlan.interactionMode,
+            sceneContracts: directorPlan.sceneContracts,
+            allowedSensitiveTopics: directorPlan.allowedSensitiveTopics,
+            allowedCriticalValues: directorPlan.allowedCriticalValues,
+            repair,
+          }),
+        (result) => {
+          const reason = npcReplyRejectionReason({
+            plan: directorPlan,
+            ...result,
+          });
+          if (
+            reason &&
+            new URLSearchParams(window.location.search).has('npcDebug')
+          )
+            console.warn(
+              `[NPC repair] ${JSON.stringify({ reason, ...result })}`,
+            );
+          return reason;
+        },
+        22_000,
+        () =>
+          stateRef.current.runId === pending.runId &&
+          stateRef.current.pendingNpcTurns.some(
+            (item) => item.id === pending.id,
+          ),
+      )
         .then(({ reply, move, factIdsUsed }) => {
           const currentState = stateRef.current;
           const currentScenario = getScenario(currentState.characterId);
@@ -2460,6 +2506,7 @@ export function PhoneGame() {
       );
       turnTimerRefs.current.set(pending.id, timer);
     }
+    return () => window.clearTimeout(cleanupTypingTimer);
   }, [state.pendingNpcTurns]);
 
   useEffect(

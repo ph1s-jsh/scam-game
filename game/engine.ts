@@ -124,6 +124,7 @@ function attachNpcDirectorPlan(
             replanCount: isReplan
               ? (item.replanCount ?? 0) + 1
               : (item.replanCount ?? 0),
+            delayMs: isReplan ? 150 : item.delayMs,
           }
         : item,
     ),
@@ -430,19 +431,38 @@ function privateConversationFallback(
 function directorRecoveryFallback(
   scenario: ScenarioDefinition,
   pending: PendingNpcTurn,
+  recentReplies: string[] = [],
 ) {
   const move = pending.directorPlan?.move;
+  const scene = pending.directorPlan?.sceneContracts?.find(
+    (contract) => contract.requestId === 'hanh-pay-pharmacy',
+  );
+  if (scene && pending.directorPlan?.interactionMode === 'persistent') {
+    const options = [
+      'Dạ hôm nay con chưa có tiền ứng. Bà thanh toán giúp con khi nhận đúng thuốc, mai con hoàn lại; nếu không được thì bà nhắn nhà thuốc hủy đơn nhé.',
+      'Con chưa có tiền để trả hộ ngay, bà ạ. Bà có thể trả tiền mặt lúc nhận, hoặc báo nhà thuốc hủy đơn nếu chưa thu xếp được.',
+    ];
+    return pickFallback(
+      { ordinary: options },
+      'ordinary',
+      pending.id,
+      recentReplies,
+    );
+  }
   if (!move || move === 'answer' || move === 'confirm' || move === 'boundary')
     return null;
 
   if (move === 'clarify')
-    return emergencyNpcReplies(scenario, pending.agentId)[0] ?? null;
+    return pickFallback(
+      { ordinary: emergencyNpcReplies(scenario, pending.agentId) },
+      'ordinary',
+      pending.id,
+      recentReplies,
+    );
 
   if (move === 'refuse') {
     if (pending.agentId.startsWith('fraud.'))
       return 'Việc này cần xử lý ngay. Nếu chưa làm được thì bạn thu xếp một cách khác rồi báo mình nhé.';
-    if (pending.directorPlan?.interactionMode === 'persistent')
-      return 'Dạ con cũng không đủ tiền để ứng đơn này đâu bà, nên lúc nhận thuốc bà thanh toán giúp con nhé.';
     if (scenario.profile.id === 'hanh' && pending.agentId.startsWith('family.'))
       return 'Dạ con hiểu rồi ạ, vậy mình dừng cách đó lại nhé bà.';
     if (pending.agentId === 'family.hanh')
@@ -614,7 +634,10 @@ function applyPendingPaymentArrangement(
     ...state,
     requestStatus: {
       ...state.requestStatus,
-      [configured.request.id]: 'arranged' as const,
+      [configured.request.id]:
+        configured.option.method === 'cancel-order'
+          ? ('cancelled' as const)
+          : ('arranged' as const),
     },
     requestArrangementOptionIds: {
       ...state.requestArrangementOptionIds,
@@ -773,7 +796,8 @@ function buildDebrief(state: GameState, scenario: ScenarioDefinition): Debrief {
   else if (hasPendingLegit)
     timeline.push('Một yêu cầu đời thường hợp lệ vẫn đang chờ xử lý.');
   for (const request of legitRequests) {
-    if (state.requestStatus[request.id] !== 'arranged') continue;
+    if (!['arranged', 'cancelled'].includes(state.requestStatus[request.id]))
+      continue;
     const optionId = state.requestArrangementOptionIds[request.id];
     const option = optionId
       ? paymentAlternativeFor(scenario, request.id, optionId)?.option
@@ -950,9 +974,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         !text ||
         !thread ||
         !(state.messages[action.threadId]?.length ?? 0) ||
-        state.pendingNpcTurns.some(
-          (pending) => pending.threadId === action.threadId,
-        ) ||
         state.blockedThreadIds.includes(action.threadId)
       )
         return state;
@@ -989,8 +1010,21 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         text,
         time: action.time,
         deliveryStatus: plan.deliveryStatus,
+        npcIgnored:
+          !settlementOnReply &&
+          (plan.disposition === 'ignore' || plan.disposition === 'seen'),
       });
       next = teachMessageFactsToObservers(next, scenario, thread, text);
+      // New substantive input replaces the obsolete reply, but all player
+      // messages stay in the transcript. A late completion cannot match its ID.
+      const replacesReply = Boolean(
+        settlementOnReply ||
+        plan.disposition === 'reply' ||
+        plan.disposition === 'reply_later',
+      );
+      const remainingTurns = replacesReply
+        ? next.pendingNpcTurns.filter((turn) => turn.threadId !== thread.id)
+        : next.pendingNpcTurns;
       const warnsFamily = Boolean(
         thread.isGroup &&
         /lừa|giả|hack|chiếm|đừng bấm|đừng chuyển|cảnh giác|mất tài khoản/i.test(
@@ -1005,7 +1039,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           plan.disposition === 'reply' ||
           plan.disposition === 'reply_later'
             ? [
-                ...next.pendingNpcTurns,
+                ...remainingTurns,
                 {
                   id: action.turnId,
                   runId: state.runId,
@@ -1031,7 +1065,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                   settlementOnReply: settlementOnReply ?? undefined,
                 },
               ]
-            : next.pendingNpcTurns,
+            : remainingTurns,
       };
       const settlementUnlockEventId =
         settlementConfiguration?.request.unlockEventId;
@@ -1243,7 +1277,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           text:
             settlement?.option.fallbackReply ??
             privateConversationFallback(scenario, pending) ??
-            directorRecoveryFallback(scenario, pending) ??
+            directorRecoveryFallback(
+              scenario,
+              pending,
+              (state.messages[pending.threadId] ?? [])
+                .filter((message) => message.author === 'npc')
+                .slice(-3)
+                .map((message) => message.text),
+            ) ??
             pickFallback(
               thread.fallbacks,
               intent,

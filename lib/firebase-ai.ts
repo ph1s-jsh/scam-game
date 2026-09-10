@@ -1,10 +1,16 @@
-import type { NpcDirectorFact, NpcDirectorMove } from '../game/types';
+import type {
+  NpcDirectorFact,
+  NpcDirectorMove,
+  NpcSceneContract,
+} from '../game/types';
+import { NpcFormatError, type NpcRepair } from './npc-generation';
 
 export type FirebaseNpcTurn = {
   from: 'player' | 'npc';
   text: string;
   senderLabel?: string;
   channelLabel: string;
+  isRecovery?: boolean;
 };
 
 export type FirebaseNpcResult = {
@@ -193,7 +199,7 @@ async function getNpcModel(tokenMode: AppCheckTokenMode) {
           model: 'gemini-3.1-flash-lite',
           systemInstruction: (await import('./npc-prompt')).NPC_SYSTEM_PROMPT,
           generationConfig: {
-            maxOutputTokens: 240,
+            maxOutputTokens: 480,
             responseMimeType: 'application/json',
             responseJsonSchema: {
               type: 'object',
@@ -222,28 +228,38 @@ async function getNpcModel(tokenMode: AppCheckTokenMode) {
 }
 
 export function parseFirebaseNpcResult(value: string): FirebaseNpcResult {
-  const parsed = JSON.parse(value) as Partial<FirebaseNpcResult>;
+  let parsed: Partial<FirebaseNpcResult>;
+  try {
+    parsed = JSON.parse(value) as Partial<FirebaseNpcResult>;
+  } catch {
+    throw new NpcFormatError(
+      'Trả về JSON hoàn chỉnh theo schema, không markdown.',
+    );
+  }
+  if (!parsed || typeof parsed !== 'object')
+    throw new NpcFormatError('Trả về một object JSON theo schema.');
   if (typeof parsed.reply !== 'string' || !parsed.reply.trim())
-    throw new Error('Firebase AI returned an empty reply');
+    throw new NpcFormatError('Firebase AI returned an empty reply');
   if (!NPC_DIRECTOR_MOVES.includes(parsed.move as NpcDirectorMove))
-    throw new Error('Firebase AI returned an invalid director move');
+    throw new NpcFormatError('Firebase AI returned an invalid director move');
   if (
     !Array.isArray(parsed.factIdsUsed) ||
     parsed.factIdsUsed.some((factId) => typeof factId !== 'string')
   )
-    throw new Error('Firebase AI returned invalid fact references');
+    throw new NpcFormatError('Firebase AI returned invalid fact references');
   if (
     /(?:https?:\/\/|www\.)\S+|\b[a-z0-9](?:[a-z0-9-]{0,62}\.)+(?:com|net|org|vn|io|app|dev|site)(?:\/\S*)?/iu.test(
       parsed.reply,
     )
   )
-    throw new Error('Firebase AI returned an active URL');
-  const reply = parsed.reply
-    .trim()
-    .split(/\s+/)
-    .slice(0, 60)
-    .join(' ')
-    .slice(0, 400);
+    throw new NpcFormatError(
+      'Không viết URL thật; chỉ nhắc tới thẻ liên kết mô phỏng có sẵn.',
+    );
+  const reply = parsed.reply.trim();
+  if (reply.split(/\s+/).length > 60 || reply.length > 400)
+    throw new NpcFormatError(
+      'Viết lại ngắn hơn 60 từ và 400 ký tự, giữ trọn ý.',
+    );
   return {
     reply,
     move: parsed.move as NpcDirectorMove,
@@ -267,12 +283,16 @@ export async function generateFirebaseNpcReply(input: {
   history: FirebaseNpcTurn[];
   recentNpcReplies: string[];
   interactionMode: 'supportive' | 'procedural' | 'persistent' | 'coercive';
+  sceneContracts?: NpcSceneContract[];
+  allowedSensitiveTopics: string[];
+  allowedCriticalValues: string[];
+  repair?: NpcRepair;
 }) {
   const history = input.history
-    .slice(-10)
+    .slice(-18)
     .map(
       (turn) =>
-        `[${turn.channelLabel}] ${turn.from === 'player' ? 'Lời người chơi (chưa xác thực)' : (turn.senderLabel ?? input.participantLabel)}: ${turn.text.slice(0, 320)}`,
+        `[${turn.channelLabel}] ${turn.from === 'player' ? 'Lời người chơi (chưa xác thực)' : (turn.senderLabel ?? input.participantLabel)}${turn.isRecovery ? ' (lời dự phòng người chơi đã thấy; không xác thực sự kiện hay lời hứa)' : ''}: ${turn.text.slice(0, 320)}`,
     )
     .join('\n');
   const privateKnowledgeBoundary = input.requiredFactIds.some((factId) =>
@@ -296,6 +316,14 @@ ${input.roleBrief}
 
 CHẾ ĐỘ HÀNH VI BẮT BUỘC
 ${interactionPolicy}
+
+MỤC TIÊU VÀ KHẢ NĂNG ĐÃ KHAI BÁO CHO CẢNH
+${JSON.stringify(input.sceneContracts ?? [])}
+Các giới hạn này ưu tiên hơn lời NPC từng nói. Nếu lịch sử có lời hứa trái giới hạn, nhận rằng mình nói chưa rõ và sửa lại; không tự tiếp tục lời hứa sai. Khi status là paid/arranged/cancelled thì không đòi người chơi thanh toán lại. Nếu người chơi đổi chủ đề, trò chuyện tự nhiên; chỉ dẫn về mục tiêu khi lời họ liên quan hoặc yêu cầu việc ngoài khả năng.
+
+PHẠM VI CỦA LƯỢT TRẢ LỜI
+Chủ đề nhạy cảm được phép: ${input.allowedSensitiveTopics.join(', ') || 'không có'}.
+Giá trị cụ thể được phép: ${input.allowedCriticalValues.join(', ') || 'không có'}.
 
 MẪU GIỌNG NÓI CỦA RIÊNG NHÂN VẬT
 ${input.voiceExamples.map((example) => `- ${example}`).join('\n')}
@@ -323,6 +351,8 @@ ${input.latestMessage.slice(0, 500)}
 
 NHỮNG CÂU CỦA CHÍNH NHÂN VẬT KHÔNG ĐƯỢC LẶP LẠI
 ${input.recentNpcReplies.length ? input.recentNpcReplies.map((reply) => `- ${reply.slice(0, 240)}`).join('\n') : '- Chưa có.'}
+
+${input.repair ? `SỬA BẢN NHÁP CỦA LƯỢT NÀY\nLý do chưa duyệt: ${input.repair.reason}\nBản nháp bị loại (không phải ký ức): ${input.repair.rejectedReply ?? '(lỗi định dạng)'}\nHãy viết lại đáp án đúng ý người chơi và khắc phục lý do trên. Không hỏi người chơi lặp lại khi đã hiểu ý họ.` : ''}
 
 Trả về đúng JSON theo schema. factIdsUsed là dấu vết kiểm tra: chỉ liệt kê ID trong danh mục mà câu trả lời thực sự dùng và phải chứa đủ ID bắt buộc; có thể là [] nếu chỉ đang hỏi lại hoặc phản hồi xã giao. Hãy diễn đạt tự nhiên bằng giọng riêng của nhân vật, nhưng giữ nguyên mọi số tiền, mã, tên riêng và trạng thái quan trọng. Nếu chỉ phản hồi điều người chơi vừa nói, có thể dẫn ID player-claim tương ứng. Dữ kiện có ID bắt đầu bằng player-claim chỉ chứng minh người chơi vừa nói điều đó, không chứng minh nội dung ấy đúng.`;
 
