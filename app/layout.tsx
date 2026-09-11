@@ -15,6 +15,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.SITE_ORIGIN ??
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : undefined) ??
       'https://phong-203-scam-game.nhau245310.chatgpt.site',
   ),
   title: 'Ba màn hình — Một nhà, ba góc nhìn',

@@ -35,6 +35,15 @@ const localBindingConfig = {
 };
 
 export default defineConfig(async () => {
+  // Vercel hosts the static export. Firebase AI runs in the browser;
+  // this deployment does not need a Cloudflare Worker or Sites bindings.
+  if (process.env.VERCEL === '1') {
+    return {
+      css: { postcss: { plugins: [tailwindcss()] } },
+      plugins: [vinext()],
+    };
+  }
+
   // Keep Wrangler and Miniflare state project-local. These are non-secret tool
   // settings; application environment belongs in ignored `.env*` files.
   process.env.WRANGLER_WRITE_LOGS ??= 'false';

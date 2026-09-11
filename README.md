@@ -23,7 +23,17 @@ Mở địa chỉ localhost do lệnh in ra, thường là http://localhost:3000
 npm run build
 ```
 
-Bản build nhắm tới Cloudflare Workers, không phải HTML tĩnh để đưa trực tiếp lên GitHub Pages. Upload mã nguồn không tự triển khai website hoặc chuyển tài khoản Firebase.
+Build mặc định giữ cấu hình Cloudflare Workers cũ. Trên Vercel (`VERCEL=1`), cùng mã nguồn được xuất tĩnh vào `dist/client`; Firebase AI vẫn chạy ở trình duyệt. Không thay đổi gameplay hoặc chuyển tài khoản Firebase.
+
+## Deploy Vercel tự động
+
+1. Kết nối GitHub với Vercel và import `ph1s-jsh/scam-game`.
+2. Giữ Root Directory `./`, preset Vite. `vercel.json` đặt `npm ci`, `npm run build` và output `dist/client`.
+3. Đặt Production Branch là `main`. Push hoặc merge vào `main` sẽ tự build và cập nhật Production; nhánh khác dùng Preview.
+4. Thêm domain Production chính xác vào domain cho phép của reCAPTCHA Enterprise và website restrictions của Firebase web API key. Không tắt App Check và không cho phép toàn bộ `*.vercel.app`.
+5. Kiểm tra chat AI trên domain mới. Deploy giao diện thành công không đồng nghĩa Firebase đã cho phép domain mới. Preview cần domain được cho phép riêng nếu muốn thử AI.
+
+Không cần GitHub Actions hoặc Vercel token trong repo. Tiến trình lưu trong trình duyệt theo origin, nên lượt chơi ở domain cũ không tự chuyển sang domain mới.
 
 ## Firebase riêng của người sử dụng
 
