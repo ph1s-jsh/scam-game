@@ -110,7 +110,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
           'Nhà thuốc Minh Tâm giao tối nay.',
           'An chưa có tiền để thanh toán hay ứng hộ đơn MH-203 hôm nay. Ngày mai An mới có tiền hoàn lại cho bà.',
           'Bà Hạnh cũng có thể thanh toán 186.000đ tiền mặt khi nhận đúng đơn thuốc.',
-          'Nếu bà không muốn thanh toán, bà có thể yêu cầu Nhà thuốc Minh Tâm hủy đơn; An không tự vay tiền, trả hộ hoặc gọi hủy hộ.',
+          'Chỉ bàn cách hủy khi bà chủ động hỏi hoặc yêu cầu hủy. Không có tiền hay từ chối trả không tự có nghĩa muốn hủy. An không tự vay tiền, trả hộ hoặc gọi hủy hộ.',
           'An không đổi số và không nhờ đóng học phí.',
         ],
         forbiddenClaims: ['Không xin thêm tiền.', 'Không nói mình đã về nhà.'],
@@ -315,7 +315,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
           ],
           routes: [
             'Bà tự nhập thông tin chuyển khoản trong ngân hàng mô phỏng hoặc chọn trả tiền mặt khi nhận đúng đơn.',
-            'Nếu bà không thể hoặc không muốn trả: giải thích An cũng thiếu tiền, rồi gợi ý bà nhắn nhà thuốc để hủy đơn. Không hủy chỉ vì bà đang hỏi hay nói không có tiền.',
+            'Nếu bà chưa muốn trả: hiểu bà đang lo ngại, chưa biết thao tác hay chưa tiện thanh toán; hỗ trợ xác minh và tiếp tục trao đổi. Không tự đề nghị hủy từ lời không có tiền. Chỉ hướng dẫn liên hệ nhà thuốc hủy khi bà chủ động nêu việc hủy.',
             'Nếu người chơi nhờ An trả: giải thích giới hạn, hẹn ngày mai hoàn lại và nhờ bà xử lý đơn hiện tại; giữ cách xưng hô tự nhiên.',
           ],
           forbiddenActs: ['npc-funds-current-order', 'invent-offscreen-action'],
@@ -661,7 +661,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
           'Mã khách hàng P203-08.',
           'Hóa đơn giấy ở ngăn bàn.',
           'Bà ở nhà.',
-          'Bà có thể tự mang hóa đơn ra điểm thu chính thức và đóng 219.000đ tiền mặt.',
+          'Bà chưa có tiền khả dụng để tự trả khoản cước này hiện tại nên nhờ An. Không tự ứng, vay, hứa đi đóng hoặc hứa hoàn tiền vào một thời điểm chưa được thiết lập.',
         ],
         forbiddenClaims: [
           'Không xin chuyển tiền tới tài khoản cá nhân.',
@@ -823,6 +823,20 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
     paymentRequests: [
       {
         id: 'an-pay-internet',
+        dialoguePolicy: {
+          threadIds: ['an-hanh', 'an-family'],
+          agentIds: ['family.hanh'],
+          goal: 'Nhờ An tự thanh toán cước Internet gia đình qua ứng dụng nhà mạng.',
+          limits: [
+            'Bà chưa có tiền khả dụng để trả khoản này hiện tại. Không tự đóng hay vay hộ.',
+            'Bà không biết số dư của An. Không bịa lịch hoàn tiền hay nói đã đóng khi game chưa ghi nhận.',
+          ],
+          routes: [
+            'Nếu An lo ngại: chỉ hóa đơn giấy và mã khách hàng đã biết để tự xác minh.',
+            'Nếu An chưa biết thao tác: giải thích dùng ứng dụng nhà mạng trong điện thoại. Nếu chưa muốn trả, tiếp tục trao đổi hoặc chờ; không tự coi là hủy dịch vụ.',
+          ],
+          forbiddenActs: ['npc-funds-current-order', 'invent-offscreen-action'],
+        },
         title: 'Cước Internet tháng 8',
         recipient: 'DỊCH VỤ MẠNG – P203',
         recipientMeta: 'Mã khách hàng P203-08',
@@ -840,21 +854,7 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
           'Bà thấy báo đã đóng rồi. Cảm ơn con nha, về ăn cơm thôi.',
         onPartialMessage:
           'Ứng dụng báo hóa đơn P203-08 vẫn còn thiếu {remaining} đó con.',
-        alternatives: [
-          {
-            id: 'an-hanh-cash-at-counter',
-            method: 'cash-at-counter',
-            trigger: 'cash-payment',
-            threadIds: ['an-hanh', 'an-family'],
-            agentIds: ['family.hanh'],
-            label:
-              'Bà Hạnh nhận tự đóng 219.000đ tiền mặt tại điểm thu chính thức bằng mã P203-08.',
-            npcGuidance:
-              'Bộ máy game đã xác nhận An đề nghị Bà Hạnh tự đóng 219.000đ tiền mặt tại điểm thu chính thức bằng mã P203-08. Bà đồng ý rõ ràng và không nói sẽ đưa tiền cho người lạ.',
-            fallbackReply:
-              'Ừ, bà đồng ý tự đóng đúng 219.000đ tiền mặt tại điểm thu chính thức bằng mã P203-08 nha con.',
-          },
-        ],
+        alternatives: [],
       },
       {
         id: 'an-pay-task',
@@ -1421,6 +1421,21 @@ export const scenarios: Record<CharacterId, ScenarioDefinition> = {
     paymentRequests: [
       {
         id: 'bao-pay-topup',
+        dialoguePolicy: {
+          threadIds: ['bao-hanh', 'bao-family'],
+          agentIds: ['family.hanh'],
+          goal: 'Nhờ Bảo nạp điện thoại vào đúng số đã lưu của bà.',
+          limits: [
+            'Bà chưa có tiền khả dụng để tự nạp khoản này hiện tại. Không tự ứng hoặc vay hộ.',
+            'Không biết số dư của Bảo, không bịa thời điểm hoàn lại tiền.',
+          ],
+          routes: [
+            'Nếu Bảo nghi ngờ: đề nghị gọi lại số bà đã lưu để xác minh.',
+            'Bảo tự nạp trong ngân hàng mô phỏng nếu đồng ý; không xin mật khẩu, OTP hoặc mã thẻ qua tin nhắn.',
+            'Nếu Bảo từ chối, hỏi thăm nguyên nhân đúng vai; không tự nhờ người khác hay hủy một giao dịch chưa có.',
+          ],
+          forbiddenActs: ['npc-funds-current-order', 'invent-offscreen-action'],
+        },
         title: 'Nạp điện thoại',
         recipient: 'BÀ HẠNH ···412',
         recipientMeta: 'Số đã lưu trong danh bạ',

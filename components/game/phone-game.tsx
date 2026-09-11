@@ -745,6 +745,9 @@ function ChatThread({
   const messages = state.messages[thread.id] ?? [];
   const isBlocked = state.blockedThreadIds.includes(thread.id);
   const isReported = state.reportedThreadIds.includes(thread.id);
+  const failedTurn = (state.failedNpcTurns ?? []).find(
+    (turn) => turn.threadId === thread.id,
+  );
   const threadIdentity = identityForThread(scenario.id, thread.id);
 
   useEffect(() => {
@@ -954,6 +957,29 @@ function ChatThread({
       </div>
 
       <div className="shrink-0 border-t border-slate-200 bg-white px-3 pb-3 pt-2">
+        {failedTurn && !isBlocked ? (
+          <output
+            className="mb-2 flex items-center justify-between gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900"
+          >
+            <span>
+              Chưa nhận được phản hồi. Bạn có thể thử lại hoặc nhắn tiếp.
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-10 shrink-0"
+              onClick={() =>
+                dispatch({
+                  type: 'RETRY_NPC_TURN',
+                  failedTurnId: failedTurn.id,
+                  turnId: crypto.randomUUID(),
+                })
+              }
+            >
+              Thử lại
+            </Button>
+          </output>
+        ) : null}
         {isBlocked ? (
           <p className="py-3 text-center text-sm text-slate-500">
             Bạn đã chặn cuộc trò chuyện này.

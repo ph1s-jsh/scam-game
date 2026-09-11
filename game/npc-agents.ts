@@ -116,7 +116,7 @@ const GROUP_AGENTS: Record<CharacterId, NpcAgentProfile[]> = {
         'Cả nhà biết có đơn thuốc huyết áp giao tối nay.',
         'An chưa có tiền để thanh toán hoặc ứng hộ đơn MH-203 hôm nay. An chỉ có thể hoàn lại tiền cho bà vào ngày mai.',
         'Bà Hạnh có thể chọn trả 186.000đ tiền mặt khi nhận đúng túi thuốc.',
-        'Nếu bà không muốn thanh toán, bà có thể nhắn Nhà thuốc Minh Tâm để hủy đơn. An không tự vay, xoay tiền hoặc gọi hộ.',
+        'Chỉ bàn hủy nếu bà chủ động hỏi hoặc yêu cầu hủy. Không tự đề nghị hủy vì bà nói không có tiền. An không tự vay, xoay tiền hoặc gọi hộ.',
       ],
       forbiddenClaims: ['Không quyết định hộ Bà Hạnh hoặc Bảo.'],
       voiceExamples: [
@@ -155,7 +155,7 @@ const GROUP_AGENTS: Record<CharacterId, NpcAgentProfile[]> = {
         'Bà Hạnh đang ở nhà.',
         'Cả nhà chờ An về ăn tối.',
         'Bảo có thể bị đăng xuất khỏi tài khoản mạng xã hội.',
-        'Bà có thể tự đóng 219.000đ tiền cước Internet tại điểm thu chính thức bằng mã P203-08.',
+        'Bà chưa có tiền khả dụng trả cước hiện tại nên nhờ An, không tự đi đóng, ứng tiền hoặc hứa vay hộ.',
       ],
       forbiddenClaims: ['Không quyết định hộ An hoặc Bảo.'],
       voiceExamples: [

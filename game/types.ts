@@ -15,6 +15,7 @@ export type MessageAuthor = 'player' | 'npc' | 'system';
 export type NpcReplyMode = 'ai' | 'fallback' | 'local';
 
 export type NpcDirectorMove =
+  | 'silent'
   | 'answer'
   | 'clarify'
   | 'acknowledge'
@@ -277,6 +278,9 @@ export interface NpcDirectorFact {
 }
 
 export interface NpcSceneContract {
+  paymentChannel?: PaymentChannel;
+  cancellationDiscussed?: boolean;
+  speakerId?: string;
   requestId: string;
   status: RequestStatus;
   goal: string;
@@ -364,6 +368,7 @@ export interface GameState {
   lastRecoveryAt: number | null;
   familyWarned: boolean;
   pendingNpcTurns: PendingNpcTurn[];
+  failedNpcTurns?: PendingNpcTurn[];
   npcReplyModes: Record<string, NpcReplyMode>;
   debrief: Debrief | null;
 }
@@ -396,6 +401,7 @@ export type GameAction =
       factIdsUsed?: string[];
     }
   | { type: 'NPC_FAILED'; runId: string; turnId: string }
+  | { type: 'RETRY_NPC_TURN'; failedTurnId: string; turnId: string }
   | { type: 'REPLAN_NPC_TURN'; runId: string; turnId: string }
   | { type: 'CALL'; callId: string; factId?: string }
   | { type: 'DISCOVER_FACT'; factId: string }

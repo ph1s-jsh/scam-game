@@ -21,7 +21,6 @@ import type {
   GameState,
   MessageIntent,
   NpcFallbacks,
-  PendingNpcTurn,
   PaymentChannel,
   PhoneNotification,
   RiskFlag,
@@ -63,6 +62,7 @@ export const EMPTY_GAME_STATE: GameState = {
   lastRecoveryAt: null,
   familyWarned: false,
   pendingNpcTurns: [],
+  failedNpcTurns: [],
   npcReplyModes: {},
   debrief: null,
 };
@@ -373,111 +373,6 @@ export function pickFallback(
       'Ừ, để mình kiểm tra lại nhé.',
     ];
   return options[hash % options.length];
-}
-
-function emergencyNpcReplies(scenario: ScenarioDefinition, agentId: string) {
-  if (scenario.profile.id === 'hanh' && agentId.startsWith('family.'))
-    return [
-      'Dạ, ý bà là sao ạ? Bà nói rõ hơn giúp con nhé.',
-      'Dạ con đang đọc đây. Bà nói lại ý chính giúp con với ạ.',
-    ];
-  if (scenario.profile.id === 'an' && agentId === 'family.hanh')
-    return [
-      'Ý con là sao, nói rõ cho bà nghe với.',
-      'Bà đang đọc đây, con nói lại ý chính giúp bà nhé.',
-    ];
-  if (scenario.profile.id === 'an' && agentId === 'family.bao')
-    return [
-      'Ý chị là sao? Chị nói rõ hơn giúp em đi.',
-      'Em đang đọc đây, chị nói lại ý chính thử xem.',
-    ];
-  if (scenario.profile.id === 'bao' && agentId === 'family.hanh')
-    return [
-      'Ý con là sao, nói rõ cho bà nghe với.',
-      'Bà đang đọc đây, con nói lại ý chính giúp bà nhé.',
-    ];
-  if (scenario.profile.id === 'bao' && agentId === 'family.an')
-    return [
-      'Ý em là sao? Em nói rõ hơn cho chị nhé.',
-      'Chị đang đọc đây, em nói lại ý chính thử xem.',
-    ];
-  return [
-    'Mình chưa hiểu ý bạn lắm. Bạn nói rõ hơn nhé.',
-    'Bạn nói lại ý chính giúp mình nhé, mình đang đọc đây.',
-  ];
-}
-
-function privateConversationFallback(
-  scenario: ScenarioDefinition,
-  pending: PendingNpcTurn,
-) {
-  if (
-    !pending.directorPlan?.factCatalog.some((fact) =>
-      fact.id.startsWith('knowledge-boundary:'),
-    )
-  )
-    return null;
-  if (pending.agentId === 'family.hanh')
-    return 'Bà không biết nội dung cuộc trò chuyện riêng đó đâu. Con kể lại cho bà nếu cần nhé.';
-  if (scenario.profile.id === 'hanh' && pending.agentId.startsWith('family.'))
-    return 'Dạ con không biết nội dung cuộc trò chuyện riêng đó đâu ạ. Bà kể lại cho con nếu cần nhé.';
-  if (scenario.profile.id === 'an' && pending.agentId === 'family.bao')
-    return 'Em không biết nội dung cuộc trò chuyện riêng đó đâu. Chị kể lại cho em nếu cần nhé.';
-  if (scenario.profile.id === 'bao' && pending.agentId === 'family.an')
-    return 'Chị không biết nội dung cuộc trò chuyện riêng đó đâu. Em kể lại cho chị nếu cần nhé.';
-  return 'Mình không biết nội dung cuộc trò chuyện riêng đó. Bạn kể lại nếu cần nhé.';
-}
-
-function directorRecoveryFallback(
-  scenario: ScenarioDefinition,
-  pending: PendingNpcTurn,
-  recentReplies: string[] = [],
-) {
-  const move = pending.directorPlan?.move;
-  const scene = pending.directorPlan?.sceneContracts?.find(
-    (contract) => contract.requestId === 'hanh-pay-pharmacy',
-  );
-  if (scene && pending.directorPlan?.interactionMode === 'persistent') {
-    const options = [
-      'Dạ hôm nay con chưa có tiền ứng. Bà thanh toán giúp con khi nhận đúng thuốc, mai con hoàn lại; nếu không được thì bà nhắn nhà thuốc hủy đơn nhé.',
-      'Con chưa có tiền để trả hộ ngay, bà ạ. Bà có thể trả tiền mặt lúc nhận, hoặc báo nhà thuốc hủy đơn nếu chưa thu xếp được.',
-    ];
-    return pickFallback(
-      { ordinary: options },
-      'ordinary',
-      pending.id,
-      recentReplies,
-    );
-  }
-  if (!move || move === 'answer' || move === 'confirm' || move === 'boundary')
-    return null;
-
-  if (move === 'clarify')
-    return pickFallback(
-      { ordinary: emergencyNpcReplies(scenario, pending.agentId) },
-      'ordinary',
-      pending.id,
-      recentReplies,
-    );
-
-  if (move === 'refuse') {
-    if (pending.agentId.startsWith('fraud.'))
-      return 'Việc này cần xử lý ngay. Nếu chưa làm được thì bạn thu xếp một cách khác rồi báo mình nhé.';
-    if (scenario.profile.id === 'hanh' && pending.agentId.startsWith('family.'))
-      return 'Dạ con hiểu rồi ạ, vậy mình dừng cách đó lại nhé bà.';
-    if (pending.agentId === 'family.hanh')
-      return 'Ừ, bà hiểu rồi. Vậy mình không làm theo cách đó nữa nhé con.';
-    if (scenario.profile.id === 'an' && pending.agentId === 'family.bao')
-      return 'Em hiểu rồi, vậy mình dừng cách đó lại nhé chị.';
-    if (scenario.profile.id === 'bao' && pending.agentId === 'family.an')
-      return 'Chị hiểu rồi, vậy mình không làm theo cách đó nữa nhé em.';
-    return 'Mình hiểu rồi, vậy tạm dừng cách đó nhé.';
-  }
-
-  if (scenario.profile.id === 'hanh' && pending.agentId.startsWith('family.'))
-    return 'Dạ con hiểu ý bà rồi ạ.';
-  if (pending.agentId === 'family.hanh') return 'Ừ, bà hiểu ý con rồi.';
-  return 'Mình hiểu ý bạn rồi.';
 }
 
 export function visiblePaymentRequests(
@@ -1033,6 +928,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       );
       next = {
         ...next,
+        failedNpcTurns: replacesReply
+          ? (next.failedNpcTurns ?? []).filter(
+              (turn) => turn.threadId !== thread.id,
+            )
+          : next.failedNpcTurns,
         familyWarned: next.familyWarned || warnsFamily,
         pendingNpcTurns:
           settlementOnReply ||
@@ -1053,8 +953,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                     : plan.delayMs,
                   // A recognized payment arrangement remains deterministic in
                   // the reducer, while the NPC's acknowledgement is still
-                  // generated in character. The configured copy is reserved
-                  // for NPC_FAILED when the AI genuinely cannot answer.
+                  // generated in character. Failed generation never commits
+                  // the arrangement or inserts configured dialogue.
                   responseKind: settlementOnReply
                     ? 'ai'
                     : (plan.responseKind ?? 'ai'),
@@ -1168,6 +1068,17 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
               : message,
         ),
       };
+      if (action.move === 'silent')
+        return syncStoryEvents({
+          ...state,
+          messages,
+          pendingNpcTurns: state.pendingNpcTurns.filter(
+            (turn) => turn.id !== pending.id,
+          ),
+          failedNpcTurns: (state.failedNpcTurns ?? []).filter(
+            (turn) => turn.threadId !== pending.threadId,
+          ),
+        }, scenario);
       let next = appendMessage(
         {
           ...state,
@@ -1215,115 +1126,54 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (
         !pending ||
         pending.runId !== action.runId ||
-        state.runId !== action.runId ||
-        pending.id !== action.turnId
+        state.runId !== action.runId
       )
         return state;
-      const thread = scenario.threads.find(
-        (item) => item.id === pending.threadId,
-      );
-      if (!thread)
-        return {
-          ...state,
-          pendingNpcTurns: state.pendingNpcTurns.filter(
-            (item) => item.id !== pending.id,
+      return {
+        ...state,
+        pendingNpcTurns: state.pendingNpcTurns.filter(
+          (item) => item.id !== pending.id,
+        ),
+        failedNpcTurns: [
+          ...(state.failedNpcTurns ?? []).filter(
+            (item) => item.threadId !== pending.threadId,
           ),
-        };
-      const lastPlayerMessage = (state.messages[pending.threadId] ?? []).find(
-        (item) => item.id === pending.playerMessageId,
+          { ...pending, directorPlan: undefined },
+        ],
+      };
+    }
+
+    case 'RETRY_NPC_TURN': {
+      const failed = (state.failedNpcTurns ?? []).find(
+        (item) => item.id === action.failedTurnId,
       );
-      const classifiedIntent = classifyIntent(lastPlayerMessage?.text ?? '');
-      const hasVisibleRequest = visiblePaymentRequests(state, scenario).some(
-        (request) => request.sourceThreadId === pending.threadId,
-      );
-      const intent =
-        classifiedIntent === 'money' && !hasVisibleRequest
-          ? 'ordinary'
-          : classifiedIntent;
-      const settlement = validatedPendingAlternative(state, scenario, pending);
-      if (pending.settlementOnReply && !settlement)
-        return {
-          ...state,
-          pendingNpcTurns: state.pendingNpcTurns.filter(
-            (item) => item.id !== pending.id,
-          ),
-        };
-      let next = appendMessage(
-        {
-          ...state,
-          messages: {
-            ...state.messages,
-            [pending.threadId]: (state.messages[pending.threadId] ?? []).map(
-              (message) =>
-                message.id === pending.playerMessageId
-                  ? { ...message, deliveryStatus: 'seen' as const }
-                  : message,
-            ),
-          },
-          pendingNpcTurns: state.pendingNpcTurns.filter(
-            (item) => item.id !== pending.id,
-          ),
-          npcReplyModes: {
-            ...state.npcReplyModes,
-            [pending.threadId]: 'fallback',
-          },
-        },
-        pending.threadId,
-        {
-          author: 'npc',
-          senderLabel: thread.isGroup ? pending.senderLabel : undefined,
-          agentId: pending.agentId,
-          responseMode: 'fallback',
-          text:
-            settlement?.option.fallbackReply ??
-            privateConversationFallback(scenario, pending) ??
-            directorRecoveryFallback(
-              scenario,
-              pending,
-              (state.messages[pending.threadId] ?? [])
-                .filter((message) => message.author === 'npc')
-                .slice(-3)
-                .map((message) => message.text),
-            ) ??
-            pickFallback(
-              thread.fallbacks,
-              intent,
-              `${state.runId}:${pending.id}:${intent}`,
-              (state.messages[pending.threadId] ?? [])
-                .filter(
-                  (message) =>
-                    message.author === 'npc' &&
-                    (thread.isGroup
-                      ? message.agentId === pending.agentId ||
-                        (!message.agentId &&
-                          message.senderLabel === pending.senderLabel)
-                      : !message.agentId ||
-                        message.agentId === pending.agentId),
-                )
-                .slice(-3)
-                .map((message) => message.text),
-              emergencyNpcReplies(scenario, pending.agentId),
-            ),
-          time: gameTime(scenario, state.elapsedMinutes),
-        },
-      );
-      next = applyPendingPaymentArrangement(next, scenario, pending);
       if (
-        state.screen === 'phone' &&
-        (state.activeApp !== 'messages' ||
-          state.activeThreadId !== pending.threadId)
-      ) {
-        const reply = next.messages[pending.threadId]?.at(-1)?.text ?? '';
-        next = appendNotification(next, {
-          id: `${pending.id}-reply-notification`,
-          app: 'messages',
-          title: thread.title,
-          body: reply.slice(0, 120),
-          time: gameTime(scenario, state.elapsedMinutes),
-          threadId: pending.threadId,
-        });
-      }
-      return syncStoryEvents(next, scenario);
+        !failed ||
+        failed.runId !== state.runId ||
+        state.blockedThreadIds.includes(failed.threadId) ||
+        state.pendingNpcTurns.some(
+          (item) => item.threadId === failed.threadId,
+        ) ||
+        action.turnId === failed.id
+      )
+        return state;
+      const pending = {
+        ...failed,
+        id: action.turnId,
+        responseKind: 'ai' as const,
+        localReply: undefined,
+        directorPlan: undefined,
+        replanCount: 0,
+        delayMs: 500,
+      };
+      const next = {
+        ...state,
+        failedNpcTurns: (state.failedNpcTurns ?? []).filter(
+          (item) => item.id !== failed.id,
+        ),
+        pendingNpcTurns: [...state.pendingNpcTurns, pending],
+      };
+      return attachNpcDirectorPlan(next, scenario, pending.id);
     }
 
     case 'CALL': {

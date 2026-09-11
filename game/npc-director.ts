@@ -127,81 +127,8 @@ const COMMON_SENTENCE_NAMES = new Set([
   'được',
 ]);
 
-const GROUNDING_STOP_WORDS = new Set([
-  'anh',
-  'ba',
-  'ban',
-  'bao',
-  'chi',
-  'con',
-  'co',
-  'cua',
-  'da',
-  'de',
-  'di',
-  'do',
-  'duoc',
-  'em',
-  'gi',
-  'giup',
-  'la',
-  'lai',
-  'minh',
-  'mot',
-  'nha',
-  'nhe',
-  'nhung',
-  'noi',
-  'nguoi',
-  'oi',
-  'ong',
-  'roi',
-  'thi',
-  'toi',
-  'va',
-  'voi',
-]);
-
 // These words can make a conversational acknowledgement, refusal or question,
 // but do not assert a new fact about the game world by themselves.
-const DIALOGUE_ONLY_WORDS = new Set([
-  'biet',
-  'cam',
-  'can',
-  'chao',
-  'chac',
-  'chua',
-  'dau',
-  'day',
-  'dong',
-  'dung',
-  'giai',
-  'goi',
-  'hieu',
-  'hoi',
-  'hon',
-  'kiem',
-  'khong',
-  'loi',
-  'nghe',
-  'nho',
-  'noi',
-  'oke',
-  'phan',
-  'ro',
-  'sao',
-  'that',
-  'the',
-  'thoi',
-  'tra',
-  'tra loi',
-  'tu',
-  'vang',
-  'vay',
-  'xac',
-  'xin',
-  'y',
-]);
 
 function unique<T>(values: T[]) {
   return [...new Set(values)];
@@ -384,28 +311,8 @@ function scopedSubjectsInClause(clause: string, knownEntities: Set<string>) {
   return subjects;
 }
 
-function groundingWords(value: string) {
-  return searchable(value)
-    .split(/\s+/)
-    .map((word) => word.replace(/[^a-z0-9]/g, ''))
-    .filter((word) => word.length >= 2 && !GROUNDING_STOP_WORDS.has(word));
-}
-
 function hasFactualNegation(value: string) {
   return /\b(khong|chua|chang|phu nhan)\b/.test(searchable(value));
-}
-
-function claimClauses(value: string) {
-  return value
-    .toLocaleLowerCase('vi')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd')
-    .replace(/[!?;:]+|[.,](?=\s|$)/g, '|')
-    .replace(/\b(?:va|nhung)\b/g, '|')
-    .split('|')
-    .map((clause) => clause.trim())
-    .filter(Boolean);
 }
 
 function casedClaimClauses(value: string) {
@@ -416,59 +323,6 @@ function casedClaimClauses(value: string) {
     .split('|')
     .map((clause) => clause.trim())
     .filter(Boolean);
-}
-
-function factGroundsReply(reply: string, facts: NpcDirectorFact[]) {
-  const factClauses = facts.flatMap((fact) =>
-    claimClauses(fact.text).map((clause) => ({
-      clause,
-      words: new Set(groundingWords(clause)),
-      names: new Set(namedTokens(clause)),
-      negated: hasFactualNegation(clause),
-    })),
-  );
-
-  return claimClauses(reply).every((replyClause) => {
-    const replyWords = unique(groundingWords(replyClause));
-    const worldWords = replyWords.filter(
-      (word) => !DIALOGUE_ONLY_WORDS.has(word),
-    );
-    if (!worldWords.length) return true;
-    const replyIsNegated = hasFactualNegation(replyClause);
-    return factClauses.some((factClause) => {
-      if (factClause.negated !== replyIsNegated) return false;
-      const shared = worldWords.filter((word) => factClause.words.has(word));
-      const unsupported = worldWords.filter(
-        (word) => !factClause.words.has(word),
-      );
-      return (
-        unsupported.length < shared.length &&
-        (shared.length >= 2 ||
-          shared.some(
-            (word) =>
-              word.length >= 3 || /\d/.test(word) || factClause.names.has(word),
-          ))
-      );
-    });
-  });
-}
-
-function namedSubjectsStayInScope(
-  reply: string,
-  facts: NpcDirectorFact[],
-  scopedFacts: NpcDirectorFact[],
-) {
-  const knownEntities = new Set(knownEntityTokens(scopedFacts));
-  return casedClaimClauses(reply).every((clause) => {
-    const subjects = scopedSubjectsInClause(clause, knownEntities);
-    if (!subjects) return false;
-    if (!subjects.length) return true;
-    const subjectFacts = facts.filter((fact) => {
-      const factEntities = entityTokens(fact.text);
-      return subjects.every((subject) => factEntities.includes(subject));
-    });
-    return subjectFacts.length > 0 && factGroundsReply(clause, subjectFacts);
-  });
 }
 
 function criticalValuesStayInScope(
@@ -534,19 +388,6 @@ function claimsPaymentCompleted(value: string) {
   });
 }
 
-const CONVERSATIONAL_MOVES = new Set<NpcDirectorMove>([
-  'answer',
-  'clarify',
-  'acknowledge',
-  'refuse',
-]);
-
-function moveFitsPlan(planned: NpcDirectorMove, actual: NpcDirectorMove) {
-  if (planned === 'confirm' || planned === 'boundary')
-    return actual === planned;
-  return CONVERSATIONAL_MOVES.has(actual);
-}
-
 function claimsScopedWorldState(value: string) {
   const normalized = searchable(value);
   const original = value.toLocaleLowerCase('vi').normalize('NFC');
@@ -565,48 +406,6 @@ function claimsScopedWorldState(value: string) {
   );
 }
 
-function isTentativeReply(value: string, move: NpcDirectorMove) {
-  if (move === 'clarify' || move === 'acknowledge' || move === 'refuse')
-    return true;
-  const normalized = searchable(value);
-  return (
-    /[?？]/u.test(value) ||
-    /\b(?:y .* la|co phai|phai khong|dung khong|y .* dung khong)\b/.test(
-      normalized,
-    )
-  );
-}
-
-function knowledgeBoundaryReplyStaysNarrow(value: string) {
-  // `claimClauses` normally splits on "và" so separate world claims can be
-  // checked independently. Preserve the conjunction when it merely joins the
-  // two participants of a private conversation ("giữa bà và Bảo").
-  const protectedParticipantPair = value.replace(
-    /\b(giữa|của)\s+([\p{L}\p{N}-]+(?:\s+[\p{L}\p{N}-]+)?)\s+và\s+([\p{L}\p{N}-]+(?:\s+[\p{L}\p{N}-]+)?)/giu,
-    '$1 $2 với $3',
-  );
-  return claimClauses(protectedParticipantPair).every((clause) => {
-    const normalized = searchable(clause);
-    return (
-      /^(?:da|vang|u|a)$/.test(normalized) ||
-      /^(?:da\s+)?khong(?:\s+dau)?(?:\s+(?:ba|ban|co|chu|anh|chi|em)\s+oi)?(?:\s+a)?$/.test(
-        normalized,
-      ) ||
-      /\b(?:khong|chua)\b(?:\s+[a-z0-9]+){0,8}\s+\b(?:biet|ro|doc|xem|thay|nghe|duoc ke)\b/.test(
-        normalized,
-      ) ||
-      /\b(?:khong|chua)\s+(?:biet|ro|doc|xem|thay|nghe)\b/.test(normalized) ||
-      /\bchi\b(?:\s+[a-z0-9]+){0,8}\s+\b(?:biet|doc|xem|thay|nghe)\b/.test(
-        normalized,
-      ) ||
-      (/\b(?:tin nhan|tro chuyen|noi dung)\b/.test(normalized) &&
-        /\b(?:rieng|rieng tu|tach biet)\b/.test(normalized) &&
-        /\b(?:biet|doc|xem|thay|nghe)\b/.test(normalized)) ||
-      /\b(?:ke lai|noi ro|noi lai|hoi lai)\b/.test(normalized)
-    );
-  });
-}
-
 function factMatchesMessage(message: string, factText: string) {
   const messagePolarity = hasFactualNegation(message);
   const factPolarity = hasFactualNegation(factText);
@@ -617,17 +416,6 @@ function factMatchesMessage(message: string, factText: string) {
   return (
     shared.length >= 2 ||
     shared.some((word) => word.length >= 7 || /\d/.test(word))
-  );
-}
-
-function factRelatesToMessage(message: string, factText: string) {
-  const messageWords = new Set(words(message));
-  const shared = unique(words(factText)).filter((word) =>
-    messageWords.has(word),
-  );
-  return (
-    shared.length >= 2 ||
-    shared.some((word) => word.length >= 3 || /\d/.test(word))
   );
 }
 
@@ -695,51 +483,9 @@ function addFact(
 
 function plannedMove(
   pending: PendingNpcTurn,
-  latestMessage: string,
+  _latestMessage: string,
 ): NpcDirectorMove {
-  if (pending.responseKind === 'local') return 'boundary';
-  if (pending.settlementOnReply) return 'confirm';
-  const value = searchable(latestMessage);
-  if (
-    /phan hoi ngan cho mot cau hoi|xac nhan tu nhien/.test(
-      searchable(pending.responseGuidance ?? ''),
-    )
-  )
-    return 'acknowledge';
-  const expressesFinancialConstraint =
-    /\b(?:khong|chang)\b(?:\s+[a-z0-9]+){0,4}\s+\b(?:co|du)\b(?:\s+[a-z0-9]+){0,3}\s+\btien\b/.test(
-      value,
-    ) || /\blam gi co tien\b/.test(value);
-  if (expressesFinancialConstraint) return 'refuse';
-  if (
-    latestMessage.trim().endsWith('?') ||
-    latestMessage.trim().endsWith('？') ||
-    /\b(ai|gi|sao|tai sao|vi sao|the nao|lam sao|bao nhieu|kiem tra|xac minh)\b/.test(
-      value,
-    ) ||
-    /\b(duoc|dc)\s*(khong|ko|kh|k)\b/.test(value)
-  )
-    return 'answer';
-  const redirectsPaymentToContact =
-    /\b(?:ba|co|toi)\b(?:\s+[a-z0-9]+){0,4}\s+\b(?:khong|ko|kh|k)\b(?:\s+[a-z0-9]+){0,3}\s+\b(?:chuyen|thanh toan|dong|tra|nop)\b/.test(
-      value,
-    ) &&
-    /\b(?:an|con|chau)\b(?:\s+[a-z0-9]+){0,5}\s+\b(?:chuyen|chuyen khoan|thanh toan|dong|tra|nop)\b/.test(
-      value,
-    );
-  if (redirectsPaymentToContact) return 'clarify';
-  if (
-    value === 'khong' ||
-    /\b(tu choi|khong dong y|khong muon|khong can|dung lai|huy bo|bo qua|thoi nhe)\b/.test(
-      value,
-    ) ||
-    /\b(khong|ko|kh|k)\b(?:\s+[a-z0-9]+){0,4}\s+\b(chuyen|chuyen khoan|thanh toan|tra|nop|dong|tham gia|lam)\b/.test(
-      value,
-    )
-  )
-    return 'refuse';
-  if (value.split(/\s+/).filter(Boolean).length <= 2) return 'clarify';
-  return 'acknowledge';
+  return pending.settlementOnReply ? 'confirm' : 'answer';
 }
 
 function requestIsRelated(
@@ -985,49 +731,11 @@ export function createNpcDirectorPlan(
     .filter((fact) => !fact.id.startsWith('player-claim:'))
     .map((fact) => fact.text)
     .join('\n');
-  let move = plannedMove(pending, latestMessage.text);
-  const trustedFacts = factCatalog.filter(
-    (fact) => !fact.id.startsWith('player-claim:'),
-  );
-  const isIdentityQuestion = /\b(ai|ten gi|la ai)\b/.test(
-    searchable(latestMessage.text),
-  );
-  const isConversationRecallQuestion =
-    asksForConversationRecall && !asksAboutAnotherNpc;
-  const relevantFact = isIdentityQuestion
-    ? trustedFacts.find((fact) => fact.id === `identity:${agent.agentId}`)
-    : asksAboutAnotherNpc
-      ? trustedFacts.find((fact) => fact.id === knowledgeBoundaryFactId)
-      : isConversationRecallQuestion
-        ? [...trustedFacts]
-            .reverse()
-            .find((fact) =>
-              fact.id.startsWith(
-                asksAboutSharedChannel ? 'shared-dialogue:' : 'dialogue:',
-              ),
-            )
-        : trustedFacts.find((fact) =>
-            factRelatesToMessage(latestMessage.text, fact.text),
-          );
-  const latestIsShortContinuation =
-    /^(?:u|uh|um|ok|oke|da|duoc|dc|roi|vang|o)$/u.test(
-      searchable(latestMessage.text),
-    );
-  const previousDialogueFact = [...trustedFacts]
-    .reverse()
-    .find((fact) => fact.id.startsWith('dialogue:'));
-  const isContextualFollowup =
-    /\b(?:vay|the|cach nao|cach khac|roi sao|lam sao|don|thuoc|nguoi giao|shipper|dem.*toi|nhan hang|ngta|giu[mn]|giup|cuu|khong.*tien|tien.*dau|y la)\b/.test(
-      latestSearchable,
-    ) || /^[?？]+$/.test(latestMessage.text.trim());
-  const sceneIsRelevant =
-    !asksAboutAnotherNpc &&
-    (sensitiveTopics(latestMessage.text).length > 0 || isContextualFollowup);
-  if (move === 'answer' && !relevantFact) move = 'clarify';
+  const move = plannedMove(pending, latestMessage.text);
   const requiredFactIds = pending.settlementOnReply
     ? [`instruction:${pending.id}`]
-    : move === 'answer' && relevantFact
-      ? [relevantFact.id]
+    : asksAboutAnotherNpc
+      ? [knowledgeBoundaryFactId]
       : [];
   const requiredCriticalValues = pending.settlementOnReply
     ? extractNpcCriticalValues(pending.responseGuidance ?? '').filter((value) =>
@@ -1041,31 +749,12 @@ export function createNpcDirectorPlan(
         requestIsRelated(request, pending, state),
     )
     .some((request) => state.requestStatus[request.id] === 'paid');
-  const turnScopeCorpus = [
-    latestMessage.text,
-    pending.responseGuidance,
-    ...factCatalog
-      .filter((fact) => requiredFactIds.includes(fact.id))
-      .map((fact) => fact.text),
-    latestIsShortContinuation ? previousDialogueFact?.text : undefined,
-    isContextualFollowup && !asksAboutAnotherNpc
-      ? previousDialogueFact?.text
-      : undefined,
-    sceneIsRelevant
-      ? sceneContracts
-          .flatMap((contract) => [contract.goal, ...contract.routes])
-          .join('\n')
-      : undefined,
-  ]
-    .filter(Boolean)
-    .join('\n');
-  const allowedSensitiveTopics = sensitiveTopics(turnScopeCorpus);
+  const allowedSensitiveTopics = sensitiveTopics(trustedCorpus);
   const interactionMode = pending.agentId.startsWith('fraud.')
     ? ('coercive' as const)
     : pending.agentId.startsWith('service.')
       ? ('procedural' as const)
-      : sceneContracts.some((contract) => contract.status === 'pending') &&
-          sceneIsRelevant
+      : sceneContracts.some((contract) => contract.status === 'pending')
         ? ('persistent' as const)
         : ('supportive' as const);
 
@@ -1079,9 +768,6 @@ export function createNpcDirectorPlan(
     allowedCriticalValues: extractNpcCriticalValues(trustedCorpus).filter(
       (value) => unlockedCriticalValues.has(value),
     ),
-    // Sensitive subjects may be answered only when this turn actually raises
-    // them. Keeping every known request in scope made otherwise-correct NPCs
-    // revive an unrelated transfer or credential request in later messages.
     allowedSensitiveTopics,
     mayClaimPaymentCompleted,
     recentNpcReplies: recentNpcMessages.map((message) => message.text),
@@ -1104,141 +790,73 @@ export function npcReplyRejectionReason(input: {
   move: NpcDirectorMove;
   factIdsUsed: string[];
 }) {
-  const { plan, reply, move } = input;
-  if (!reply.trim() || !moveFitsPlan(plan.move, move))
-    return 'Lời thoại trống hoặc kiểu phản hồi không khớp hành động đã duyệt.';
+  const { plan, reply, move, factIdsUsed } = input;
+  if (move === 'silent')
+    return !reply.trim() && !plan.settlementMethod
+      ? null
+      : 'Im lặng phải có lời thoại trống và không thực hiện giao dịch.';
+  if (!reply.trim())
+    return 'Lời thoại trống. Trả lời hoặc chọn silent nếu không cần đáp.';
   const capabilityError = sceneContractViolation(reply, plan.sceneContracts);
   if (capabilityError) return capabilityError;
-  if (
-    (plan.recentNpcReplies ?? []).some(
-      (previousReply) => searchable(previousReply) === searchable(reply),
-    )
-  )
-    return 'Đang lặp nguyên câu trước. Trả lời ý mới hoặc giải thích phần người chơi chưa hiểu bằng lời khác.';
-
-  const factIdsUsed = unique(input.factIdsUsed);
-  const allowedFactIds = new Set(plan.factCatalog.map((fact) => fact.id));
-  const requiresExactContract =
-    plan.move === 'confirm' || plan.move === 'boundary';
-  if (
-    requiresExactContract &&
-    (factIdsUsed.some((factId) => !allowedFactIds.has(factId)) ||
-      plan.requiredFactIds.some((factId) => !factIdsUsed.includes(factId)))
-  )
-    return 'Dấu vết dữ kiện không khớp. Chỉ dùng ID có trong danh mục và giữ đủ ID bắt buộc cho hành động đã duyệt.';
-
-  // Dialogue records what was said, not proof that a transfer or offscreen act happened.
-  const trustedFacts = plan.factCatalog.filter(
+  const canonical = plan.factCatalog.filter(
     (fact) => !/^(?:player-claim|dialogue|shared-dialogue):/.test(fact.id),
   );
-  const playerClaims = plan.factCatalog.filter((fact) =>
-    fact.id.startsWith('player-claim:'),
-  );
-  const replyCriticalValues = extractNpcCriticalValues(reply);
-  if (
-    plan.requiredCriticalValues.some(
-      (value) => !replyCriticalValues.includes(value),
-    )
-  )
-    return 'Thiếu giá trị bắt buộc của hành động đã duyệt. Giữ đúng số tiền/mã được yêu cầu.';
-  const allowedValues = new Set(plan.allowedCriticalValues);
-  if (replyCriticalValues.some((value) => !allowedValues.has(value)))
-    return 'Có số tiền, mã, tài khoản hoặc URL không được phép. Chỉ dùng giá trị trong danh mục.';
-  if (!criticalValuesStayInScope(reply, trustedFacts, plan.factCatalog))
-    return 'Giá trị được gắn sai người hoặc sai mục đích. Không chuyển tài khoản hoặc số tiền giữa các yêu cầu.';
-  const scopedTopics = new Set(plan.allowedSensitiveTopics);
-  const replyTopics = sensitiveTopics(reply);
-  if (replyTopics.some((topic) => !scopedTopics.has(topic)))
-    return `Đang mở lại chủ đề ngoài lượt này (${replyTopics.filter((topic) => !scopedTopics.has(topic)).join(', ')}). Trả lời sát tin nhắn mới, không nhắc yêu cầu nhạy cảm cũ.`;
-  if (
-    namedTokens(reply).some(
-      (token) =>
-        !plan.factCatalog.some((fact) =>
-          entityTokens(fact.text).includes(token),
-        ),
-    )
-  )
-    return 'Có tên riêng ngoài dữ kiện đã biết. Không tự bịa người hoặc địa điểm mới.';
-  const replyWords = Array.from(
-    reply
-      .toLocaleLowerCase('vi')
-      .normalize('NFC')
-      .matchAll(/\p{L}+/gu),
-    (match) => match[0],
-  );
-  const claimsCompletion = claimsPaymentCompleted(reply);
-  const normalizedReply = searchable(reply);
-  const originalReply = reply.toLocaleLowerCase('vi').normalize('NFC');
-  const admitsUncertainty =
-    /(?:^|[\s,.;!?])(?:không|chưa)\s+(?:biết|rõ|nhớ)(?=$|[\s,.;!?])/u.test(
-      originalReply,
-    ) || /\b(?:khong biet|khong ro|chua biet)\b/.test(normalizedReply);
-  const knowledgeBoundaryFacts = trustedFacts.filter((fact) =>
-    fact.id.startsWith('knowledge-boundary:'),
-  );
-  const admitsPrivateBoundary =
-    knowledgeBoundaryFacts.length > 0 &&
-    (/\b(?:khong|chua)\b(?:\s+[a-z0-9]+){0,5}\s+\b(?:doc|xem|thay|nghe)\b/.test(
-      normalizedReply,
-    ) ||
-      (/\bkhong\b/.test(normalizedReply) &&
-        /\b(?:tin nhan|tro chuyen|noi dung)\b/.test(normalizedReply) &&
-        /\b(?:rieng|rieng tu|tach biet)\b/.test(normalizedReply)));
-  const safelyAdmitsUncertainty = admitsUncertainty || admitsPrivateBoundary;
-  if (
-    knowledgeBoundaryFacts.length &&
-    (!safelyAdmitsUncertainty || !knowledgeBoundaryReplyStaysNarrow(reply))
-  )
-    return 'Lượt hỏi chuyện riêng cần thừa nhận giới hạn biết; không đoán nội dung riêng hay chuyển sang đơn hàng.';
-  const requiresGrounding = move === 'confirm' || claimsScopedWorldState(reply);
-  const groundingFacts =
-    isTentativeReply(reply, move) && !replyCriticalValues.length
-      ? [...trustedFacts, ...playerClaims]
-      : trustedFacts;
-  if (
-    requiresGrounding &&
-    !safelyAdmitsUncertainty &&
-    (!groundingFacts.length ||
-      !factGroundsReply(reply, groundingFacts) ||
-      !namedSubjectsStayInScope(reply, groundingFacts, plan.factCatalog))
-  )
-    return 'Câu khẳng định sự kiện chưa có chứng cứ. Chỉ xác nhận trạng thái do game cung cấp; lời người chơi và lời hứa cũ không phải chứng cứ.';
-  if (plan.settlementMethod === 'cancel-order') {
-    if (
-      !/\b(?:da huy|xac nhan huy|dong y huy)\b/.test(normalizedReply) ||
-      /\b(?:khong|chua)\s+(?:(?:the|duoc|xac nhan)\s+)*huy\b/.test(
-        normalizedReply,
-      ) ||
-      /\b(?:van|cu|nho|vui long)\s+(?:(?:co|ba|chi|bac)\s+)?(?:thanh toan|tra tien|nhan)\b/.test(
-        normalizedReply,
-      )
-    )
-      return 'Chỉ xác nhận đã hủy đúng đơn theo yêu cầu. Không tiếp tục yêu cầu thanh toán hoặc nhận đơn.';
+  // Guard invented plot events, not ordinary conversational wording.
+  for (const clause of casedClaimClauses(reply)) {
+    if (!claimsScopedWorldState(clause) && !/(?:đang|vừa|đã) ở|ở bệnh viện/iu.test(clause)) continue;
+    if (/không biết|chưa biết|không đọc|không thấy|không rõ/iu.test(clause)) continue;
+    const knownEntities = new Set(knownEntityTokens(plan.factCatalog));
+    const subjects = scopedSubjectsInClause(clause, knownEntities);
+    if (namedTokens(clause).some((name) => !knownEntities.has(name)))
+      return 'Không bịa tên người hoặc địa điểm trong một sự việc. Chỉ dùng dữ kiện được cung cấp.';
+    if (!subjects || !canonical.some((fact) =>
+      subjects.every((subject) => entityTokens(fact.text).includes(subject)) &&
+      casedClaimClauses(fact.text).some((part) => searchable(clause) === searchable(part) || factMatchesMessage(clause, part)),
+    )) return 'Không bịa biến cố, địa điểm hoặc trạng thái nhân vật. Chỉ dùng sự việc có trong dữ kiện, không lấy lời người chơi làm sự thật.';
   }
+  const values = extractNpcCriticalValues(reply);
+  const known = new Set(plan.allowedCriticalValues);
+  if (values.some((value) => !known.has(value)))
+    return 'Không bịa số tiền, tài khoản, mã hoặc liên kết. Chỉ dùng giá trị được cung cấp.';
+  if (!criticalValuesStayInScope(reply, canonical, plan.factCatalog))
+    return 'Số tiền hoặc tài khoản bị gắn sai người/yêu cầu. Giữ đúng thông tin trong dữ kiện.';
+  if (!plan.mayClaimPaymentCompleted && claimsPaymentCompleted(reply))
+    return 'Chưa có thanh toán được ghi nhận. Không nói đã trả, nhận hoặc chuyển xong.';
   if (
-    move === 'confirm' &&
-    plan.settlementMethod !== 'cancel-order' &&
-    (/\b(khong|chua|chang|tu choi|khong the|khong duoc)\b/.test(
-      normalizedReply,
-    ) ||
-      !(
-        replyWords.includes('ừ') ||
-        replyWords.includes('vâng') ||
-        /\b(dong y|duoc|se|xac nhan|ok|oke)\b/.test(normalizedReply)
-      ))
-  )
-    return 'Cần xác nhận đúng phương án đã duyệt, không phủ nhận hoặc đổi người thanh toán.';
-  if (
-    !plan.mayClaimPaymentCompleted &&
-    claimsCompletion &&
-    replyTopics.some(
-      (topic) =>
-        topic === 'bank-transfer' ||
-        topic === 'cash-payment' ||
-        topic === 'payment',
+    plan.requiredFactIds.some((id) => id.startsWith('knowledge-boundary:')) &&
+    casedClaimClauses(reply).some((clause) =>
+      (claimsScopedWorldState(clause) || leadingSubjectToken(clause).length > 0) &&
+      !/không biết|chưa biết|không đọc|không thấy|chưa thấy|không xem|chưa xem|không rõ/iu.test(clause),
     )
   )
-    return 'Chưa có thanh toán trong game. Không nói đã nhận/chuyển/trả xong.';
+    return 'Không biết chuyện riêng của nhân vật khác. Không khẳng định đã thấy hay biết nội dung đó.';
+  if (plan.settlementMethod) {
+    if (
+      move !== 'confirm' ||
+      plan.requiredFactIds.some((id) => !factIdsUsed.includes(id)) ||
+      factIdsUsed.some((id) => !plan.factCatalog.some((fact) => fact.id === id))
+    )
+      return 'Hành động cần xác nhận đúng chỉ dẫn và dữ kiện bắt buộc.';
+    if (plan.requiredCriticalValues.some((value) => !values.includes(value)))
+      return 'Giữ đủ giá trị bắt buộc của phương án đã duyệt.';
+    if (plan.settlementMethod === 'cancel-order') {
+      const text = searchable(reply);
+      if (
+        !/\b(?:da huy|xac nhan huy|dong y huy)\b/.test(text) ||
+        /\b(?:khong|chua)\s+(?:(?:the|duoc|xac nhan)\s+)*huy\b/.test(text) ||
+        /\b(?:van|cu|nho|vui long)\s+(?:(?:co|ba|chi|bac)\s+)?(?:thanh toan|tra tien|nhan)\b/.test(
+          text,
+        )
+      )
+        return 'Xác nhận hủy đơn đã duyệt; không tiếp tục yêu cầu trả tiền hay nhận đơn.';
+    } else if (
+      !/tiền mặt/iu.test(reply) ||
+      /không.*(?:đồng ý|tiền mặt)|chuyển khoản/iu.test(reply)
+    )
+      return 'Xác nhận phương án tiền mặt đã duyệt, không đổi cách thanh toán.';
+  }
+  // Ordinary wording is not required to overlap a fact sentence or match a template.
   return null;
 }
 

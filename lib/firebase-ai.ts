@@ -20,6 +20,7 @@ export type FirebaseNpcResult = {
 };
 
 const NPC_DIRECTOR_MOVES: NpcDirectorMove[] = [
+  'silent',
   'answer',
   'clarify',
   'acknowledge',
@@ -238,7 +239,10 @@ export function parseFirebaseNpcResult(value: string): FirebaseNpcResult {
   }
   if (!parsed || typeof parsed !== 'object')
     throw new NpcFormatError('Trả về một object JSON theo schema.');
-  if (typeof parsed.reply !== 'string' || !parsed.reply.trim())
+  if (
+    typeof parsed.reply !== 'string' ||
+    (!parsed.reply.trim() && parsed.move !== 'silent')
+  )
     throw new NpcFormatError('Firebase AI returned an empty reply');
   if (!NPC_DIRECTOR_MOVES.includes(parsed.move as NpcDirectorMove))
     throw new NpcFormatError('Firebase AI returned an invalid director move');
@@ -320,6 +324,7 @@ ${interactionPolicy}
 MỤC TIÊU VÀ KHẢ NĂNG ĐÃ KHAI BÁO CHO CẢNH
 ${JSON.stringify(input.sceneContracts ?? [])}
 Các giới hạn này ưu tiên hơn lời NPC từng nói. Nếu lịch sử có lời hứa trái giới hạn, nhận rằng mình nói chưa rõ và sửa lại; không tự tiếp tục lời hứa sai. Khi status là paid/arranged/cancelled thì không đòi người chơi thanh toán lại. Nếu người chơi đổi chủ đề, trò chuyện tự nhiên; chỉ dẫn về mục tiêu khi lời họ liên quan hoặc yêu cầu việc ngoài khả năng.
+Giới hạn áp dụng cả lời đề nghị và câu hỏi: nếu không có khả năng gọi hộ thì cũng không hỏi "có muốn con gọi hộ không?". cancellationDiscussed=false nghĩa là người chơi chưa nêu hủy: không tự đề xuất hủy, kể cả khi họ nói không có tiền. Không tạo lối thoát ngoài các khả năng thật của cảnh.
 
 PHẠM VI CỦA LƯỢT TRẢ LỜI
 Chủ đề nhạy cảm được phép: ${input.allowedSensitiveTopics.join(', ') || 'không có'}.
@@ -328,9 +333,11 @@ Giá trị cụ thể được phép: ${input.allowedCriticalValues.join(', ') |
 MẪU GIỌNG NÓI CỦA RIÊNG NHÂN VẬT
 ${input.voiceExamples.map((example) => `- ${example}`).join('\n')}
 
-ĐỊNH HƯỚNG CỦA ĐẠO DIỄN
-- Kiểu phản hồi dự kiến là: ${input.plannedMove}
-- Nếu đây là hội thoại thông thường nhưng lời người chơi mơ hồ, bạn có thể chọn clarify; nếu cần từ chối thì chọn refuse. Với confirm hoặc boundary, phải giữ đúng kiểu đã định.
+QUYỀN CHỌN CÁCH PHẢN HỒI
+${input.plannedMove === 'confirm' ? '- Game đã duyệt một hành động cụ thể. Chọn confirm và xác nhận đúng hành động.' : '- Tự hiểu ý dựa trên cả cuộc trò chuyện rồi chọn answer, acknowledge, clarify, refuse hoặc silent. Không suy ra ý người chơi chỉ từ số từ.'}
+- "oke con", "dạ bà", "ừ chị" thường là đã hiểu, không phải câu mơ hồ. Có thể đáp ngắn đúng vai hoặc chọn silent với reply="" nếu không cần nói thêm.
+- "kệ", "biến", "boom/bom hàng" có thái độ và ý nghĩa trong ngữ cảnh. Phản ứng đúng vai; nếu chưa rõ người chơi muốn hủy thật hay chỉ đang bực, hỏi xác nhận. Không tự hủy từ tiếng lóng.
+- Với silent, chỉ đánh dấu đã đọc, không có lời thoại và không thay đổi sự việc. Không chọn silent để bỏ qua câu hỏi cần trả lời hoặc thay cho xử lý giao dịch.
 - Bạn chỉ viết lời thoại. Không tự tạo hành động hay thay đổi trạng thái game.
 ${privateKnowledgeBoundary ? '- Lượt này chỉ trả lời rằng bạn không đọc/không biết cuộc trò chuyện riêng được hỏi tới. Không nhắc thuốc, tiền, tài khoản, mã, liên kết hoặc bất kỳ yêu cầu cũ nào.\n' : ''}
 
@@ -349,7 +356,7 @@ ${input.forbiddenClaims.map((claim) => `- ${claim}`).join('\n')}
 ${history ? `TRÍ NHỚ RIÊNG CỦA NHÂN VẬT\nChỉ gồm các cuộc trò chuyện mà chính nhân vật này đã tham gia. Nhân vật không biết nội dung ở bất kỳ kênh riêng nào không xuất hiện dưới đây. Lời của người khác chỉ là điều nhân vật đã đọc, không tự động trở thành sự thật.\n${history}\n\n` : ''}TIN NHẮN MỚI CỦA NGƯỜI CHƠI
 ${input.latestMessage.slice(0, 500)}
 
-NHỮNG CÂU CỦA CHÍNH NHÂN VẬT KHÔNG ĐƯỢC LẶP LẠI
+LỜI GẦN ĐÂY (tránh lặp yêu cầu máy móc; lời đáp ngắn tự nhiên có thể giống nhau)
 ${input.recentNpcReplies.length ? input.recentNpcReplies.map((reply) => `- ${reply.slice(0, 240)}`).join('\n') : '- Chưa có.'}
 
 ${input.repair ? `SỬA BẢN NHÁP CỦA LƯỢT NÀY\nLý do chưa duyệt: ${input.repair.reason}\nBản nháp bị loại (không phải ký ức): ${input.repair.rejectedReply ?? '(lỗi định dạng)'}\nHãy viết lại đáp án đúng ý người chơi và khắc phục lý do trên. Không hỏi người chơi lặp lại khi đã hiểu ý họ.` : ''}

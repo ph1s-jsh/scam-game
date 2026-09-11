@@ -21,6 +21,7 @@ export function npcSceneContracts(
       return [
         {
           requestId: request.id,
+          paymentChannel: request.channel,
           status: state.requestStatus[request.id] ?? 'pending',
           goal: request.title,
           limits: [],
@@ -32,6 +33,12 @@ export function npcSceneContracts(
     return [
       {
         requestId: request.id,
+        paymentChannel: request.channel,
+        speakerId: pending.agentId,
+        cancellationDiscussed: (state.messages[pending.threadId] ?? []).some(
+          (message) => message.author === 'player' &&
+            /hủy|huỷ|huy don|boom|bom|không (?:muốn )?nhận|khong (?:muon )?nhan/iu.test(message.text),
+        ),
         status: state.requestStatus[request.id] ?? 'pending',
         ...policy,
       },
@@ -60,14 +67,27 @@ export function sceneContractViolation(
     .split(/[.!?;,\n]+|\b(?:va|nhung|roi)\b/)
     .map((clause) => clause.trim());
   for (const contract of contracts) {
+    if (contract.paymentChannel === 'transfer' &&
+      /\b(?:chi (?:nhan|tra|thanh toan)(?: bang)? tien mat|(?:nha thuoc|ho) khong (?:nhan|cho|chap nhan)(?: thanh toan)? chuyen khoan)\b/.test(text))
+      return 'Yêu cầu này có hỗ trợ chuyển khoản. Không nói bên nhận chỉ nhận tiền mặt. NPC không có tiền không có nghĩa người chơi không được chuyển khoản.';
+    if (contract.cancellationDiscussed === false && /\b(?:huy|boom|bom)\b/.test(text))
+      return 'Người chơi chưa đề cập hủy đơn. Không tự chuyển cuộc trò chuyện sang hủy: hỏi họ chưa tiện trả, chưa biết thao tác hay còn lo ngại, rồi hỗ trợ đúng khả năng.';
+    const isGrandmother = contract.speakerId === 'family.hanh';
+    const ownClauses = isGrandmother
+      ? clauses.map((clause) => clause
+          .replace(/\b(?:con|chau|an)\b/g, 'nguoi-choi')
+          .replace(/\bba\b/g, 'con'))
+      : clauses;
+    const canRepayTomorrow = contract.requestId === 'hanh-pay-pharmacy';
     if (contract.forbiddenActs.includes('npc-funds-current-order')) {
-      const claimsNpcPays = clauses.some(
+      const claimsNpcPays = ownClauses.some(
         (clause) =>
-          /\b(?:con|chau|an)\s+(?:(?:se|tu|co the|van|xin|cung|di|kiem tra roi)\s+){0,3}(?:chuyen|thanh toan|tra|ung|gui|xoay|vay|muon)\b/.test(
+          /\b(?:con|chau|an)\s+(?:(?:se|tu|co the|van|xin|cung|di|kiem tra roi)\s+){0,3}(?:chuyen|thanh toan|tra|ung|gui|xoay|vay|muon|nap|dong|hoan)\b/.test(
             clause,
           ) &&
           // Tomorrow must describe reimbursement, not "chuyển ngay rồi mai tính".
           !(
+            canRepayTomorrow &&
             /\b(?:mai|ngay mai)\b/.test(clause) &&
             /\b(?:tra|gui|chuyen|hoan)\b/.test(clause) &&
             /\b(?:lai|cho ba|ba)\b/.test(clause) &&
@@ -76,18 +96,21 @@ export function sceneContractViolation(
             )
           ),
       );
-      const claimsAvailableFunds =
-        /\b(?:con|chau|an)\s+(?:van\s+|da\s+)?co\s+(?:du\s+)?tien\b/.test(text);
+      const claimsAvailableFunds = ownClauses.some((clause) =>
+        /\b(?:con|chau|an)\s+(?:van\s+|da\s+)?co\s+(?:du\s+)?tien\b/.test(
+          clause,
+        ),
+      );
       if (claimsNpcPays || claimsAvailableFunds)
-        return 'NPC không có tiền ứng đơn hiện tại. Không được hứa chuyển, gửi, trả hoặc xoay tiền ngay. Chỉ có thể hẹn hoàn lại vào ngày mai.';
+        return 'NPC không có tiền khả dụng trả khoản đang nhờ. Không tự trả, nạp, ứng, vay hay xoay tiền. Chỉ hẹn hoàn tiền nếu thời điểm đó có trong giới hạn của cảnh.';
     }
     if (
       contract.forbiddenActs.includes('invent-offscreen-action') &&
-      clauses.some((clause) =>
+      (ownClauses.some((clause) =>
         /\b(?:con|chau|an|minh|toi)\s+(?:(?:se|dang|da|vua|co the|tu|xin)\s+)*(?:tim|xoay|vay|muon|nho|lien he|goi|huy)\b/.test(
           clause,
         ),
-      )
+      ) || /\b(?:co mong-muon|can|de)\s+(?:con|chau|ba)\s+(?:goi|lien he|huy|vay|xoay)\b/.test(text))
     )
       return 'Không có hành động hậu trường này. Giải thích giới hạn và đưa người chơi tới phương án đang có; không hứa tìm tiền, gọi hộ hoặc hủy hộ.';
     if (

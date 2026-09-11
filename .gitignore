@@ -38,3 +38,6 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+/.sites-runtime/
+/.sites-deploy.tar.gz
+/NUL

@@ -7,6 +7,15 @@ const STORAGE_KEY = 'three-screens:session:v3';
 const LEGACY_STORAGE_KEY = 'three-screens:session:v2';
 const characterIds = new Set<CharacterId>(['hanh', 'an', 'bao']);
 
+// A local QA playthrough never overwrites the player's saved game.
+function gameStorage() {
+  const location = window.location;
+  const isolated = location &&
+    ['localhost', '127.0.0.1'].includes(location.hostname) &&
+    new URLSearchParams(location.search).get('npcTest') === '1';
+  return isolated ? window.sessionStorage : window.localStorage;
+}
+
 function isStringArray(value: unknown): value is string[] {
   return (
     Array.isArray(value) && value.every((item) => typeof item === 'string')
@@ -90,8 +99,8 @@ export function loadGameState(): GameState | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw =
-      window.localStorage.getItem(STORAGE_KEY) ??
-      window.localStorage.getItem(LEGACY_STORAGE_KEY);
+      gameStorage().getItem(STORAGE_KEY) ??
+      gameStorage().getItem(LEGACY_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Omit<
       Partial<GameState>,
@@ -170,12 +179,28 @@ export function loadGameState(): GameState | null {
           : null,
       requestArrangementOptionIds,
       npcKnownFactIds,
+      failedNpcTurns: Array.isArray(parsed.failedNpcTurns)
+        ? parsed.failedNpcTurns
+            .filter((pending) => isValidPendingTurn(pending, parsed))
+            .map((pending) => ({
+              ...pending,
+              responseKind: 'ai',
+              localReply: undefined,
+              directorPlan: undefined,
+              responseGuidance: pending.settlementOnReply ? pending.responseGuidance : undefined,
+            }))
+        : [],
       pendingNpcTurns:
         parsed.saveVersion === 3 && Array.isArray(parsed.pendingNpcTurns)
           ? parsed.pendingNpcTurns
               .filter((pending) => isValidPendingTurn(pending, parsed))
               .map((pending) => ({
                 ...pending,
+                responseKind: 'ai',
+                localReply: undefined,
+                responseGuidance: pending.settlementOnReply
+                  ? pending.responseGuidance
+                  : undefined,
                 directorPlan: undefined,
                 replanCount: 0,
               }))
@@ -197,7 +222,7 @@ export function loadGameState(): GameState | null {
             restored.requestStatus[requestId] = 'pending';
         }
       }
-      restored.pendingNpcTurns = restored.pendingNpcTurns.map((pending) => {
+      const restoreProposal = (pending: PendingNpcTurn): PendingNpcTurn => {
         const proposal = pending.settlementOnReply;
         if (
           !proposal ||
@@ -215,7 +240,9 @@ export function loadGameState(): GameState | null {
           settlementOnReply: undefined,
           responseGuidance: undefined,
         };
-      });
+      };
+      restored.pendingNpcTurns = restored.pendingNpcTurns.map(restoreProposal);
+      restored.failedNpcTurns = restored.failedNpcTurns?.map(restoreProposal);
     }
     return restoreConfiguredMessageLinks(restored);
   } catch {
@@ -226,8 +253,8 @@ export function loadGameState(): GameState | null {
 export function saveGameState(state: GameState) {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    gameStorage().setItem(STORAGE_KEY, JSON.stringify(state));
+    gameStorage().removeItem(LEGACY_STORAGE_KEY);
   } catch {
     // Storage can be unavailable in privacy modes. The current session still works.
   }
@@ -236,8 +263,8 @@ export function saveGameState(state: GameState) {
 export function clearGameState() {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.removeItem(STORAGE_KEY);
-    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    gameStorage().removeItem(STORAGE_KEY);
+    gameStorage().removeItem(LEGACY_STORAGE_KEY);
   } catch {
     // Nothing else to clear.
   }
