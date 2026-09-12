@@ -91,9 +91,11 @@ export function sceneContractViolation(
             /\b(?:mai|ngay mai)\b/.test(clause) &&
             /\b(?:tra|gui|chuyen|hoan)\b/.test(clause) &&
             /\b(?:lai|cho ba|ba)\b/.test(clause) &&
-            !/\b(?:ngay|bay gio|truoc|ung|xoay|vay|muon)\b/.test(
-              clause.replace(/ngay mai/g, 'mai'),
-            )
+            !/\b(?:bay gio|hom nay|toi nay|truoc|ung|xoay|vay|muon)\b/.test(clause) &&
+            // "Ngày mai con gửi lại bà ngay" is still tomorrow.
+            // Only accept an emphatic "ngay" when tomorrow precedes the act.
+            (!/\bngay\b/.test(clause.replace(/ngay mai/g, 'mai')) ||
+              /\b(?:ngay mai|mai)\b.*\b(?:con|chau|an)\b.*\b(?:tra|gui|chuyen|hoan)\b/.test(clause))
           ),
       );
       const claimsAvailableFunds = ownClauses.some((clause) =>
