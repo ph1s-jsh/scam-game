@@ -3,7 +3,7 @@ import {
   createNpcDirectorPlan,
   npcWorldRevision,
   teachMessageFactsToObservers,
-  validateNpcDirectorReply,
+  npcResponseEnvelopeError,
 } from './npc-director';
 import {
   findPaymentArrangement,
@@ -1051,7 +1051,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           npcWorldRevision(state, scenario, pending) !==
             pending.directorPlan.baseRevision ||
           !action.move ||
-          !validateNpcDirectorReply({
+          npcResponseEnvelopeError({
             plan: pending.directorPlan,
             reply: action.text,
             move: action.move,

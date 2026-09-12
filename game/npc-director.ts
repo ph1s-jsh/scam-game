@@ -784,6 +784,7 @@ export function createNpcDirectorPlan(
   return { baseRevision, ...contract };
 }
 
+// Legacy dialogue audit only. Never use prose heuristics to gate live chat.
 export function npcReplyRejectionReason(input: {
   plan: NpcDirectorPlan;
   reply: string;
@@ -864,4 +865,20 @@ export function validateNpcDirectorReply(
   input: Parameters<typeof npcReplyRejectionReason>[0],
 ) {
   return npcReplyRejectionReason(input) === null;
+}
+
+// Live boundary: validate the response envelope, not Vietnamese wording.
+// Settlement eligibility and world revision are still checked by the reducer.
+export function npcResponseEnvelopeError(
+  { plan, reply, move, factIdsUsed }: Parameters<typeof npcReplyRejectionReason>[0],
+): string | null {
+  if (move === 'silent')
+    return !reply.trim() && !plan.settlementMethod ? null : 'Silent requires an empty reply and no settlement.';
+  if (!reply.trim()) return 'Empty NPC reply.';
+  if (plan.settlementMethod && (
+    move !== 'confirm' ||
+    plan.requiredFactIds.some((id) => !factIdsUsed.includes(id)) ||
+    factIdsUsed.some((id) => !plan.factCatalog.some((fact) => fact.id === id))
+  )) return 'Settlement requires the approved action references.';
+  return null;
 }

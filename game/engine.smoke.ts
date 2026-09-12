@@ -1067,10 +1067,12 @@ function reachAnTask(runId = 'an-task') {
     }),
     false,
   );
-  assert.strictEqual(
-    gameReducer(state, replyAction(state, 'Bà đã thanh toán xong rồi con.')),
-    state,
-  );
+  // Dialogue is not a transaction: even an inaccurate model claim must not
+  // change money or mark a request paid. Wording is guided by the prompt.
+  const spoken = gameReducer(state, replyAction(state, 'Bà đã thanh toán xong rồi con.'));
+  assert.deepEqual(spoken.transactions, state.transactions);
+  assert.deepEqual(spoken.requestStatus, state.requestStatus);
+  assert.equal(spoken.messages['an-hanh'].at(-1)?.text, 'Bà đã thanh toán xong rồi con.');
   assert.equal(
     validateNpcDirectorReply({
       plan,

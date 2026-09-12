@@ -63,8 +63,7 @@ import {
 import { collectNpcMemory, getNpcAgent } from '@/game/npc-agents';
 import {
   npcWorldRevision,
-  npcReplyRejectionReason,
-  validateNpcDirectorReply,
+  npcResponseEnvelopeError,
 } from '@/game/npc-director';
 import { selectedPaymentAlternative } from '@/game/payment-arrangements';
 import {
@@ -2344,7 +2343,7 @@ export function PhoneGame() {
             repair,
           }),
         (result) => {
-          const reason = npcReplyRejectionReason({
+          const reason = npcResponseEnvelopeError({
             plan: directorPlan,
             ...result,
           });
@@ -2392,7 +2391,7 @@ export function PhoneGame() {
             return;
           }
           if (
-            !validateNpcDirectorReply({
+            npcResponseEnvelopeError({
               plan: currentPending.directorPlan,
               reply,
               move,
