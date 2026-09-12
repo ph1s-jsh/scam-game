@@ -359,6 +359,9 @@ ${input.latestMessage.slice(0, 500)}
 LỜI GẦN ĐÂY (tránh lặp yêu cầu máy móc; lời đáp ngắn tự nhiên có thể giống nhau)
 ${input.recentNpcReplies.length ? input.recentNpcReplies.map((reply) => `- ${reply.slice(0, 240)}`).join('\n') : '- Chưa có.'}
 
+NHỊP TRẢ LỜI LƯỢT NÀY
+Ưu tiên 1–2 câu, khoảng 10–25 từ, chỉ đáp ý mới nhất. Không bắt chước độ dài của tin cũ. Dữ kiện là bối cảnh để hiểu, không phải danh sách cần kể lại; chỉ nhắc lại số tiền hoặc yêu cầu khi người chơi hỏi hoặc hành động đã duyệt cần xác nhận. Chỉ dài hơn khi thực sự cần giải thích, vẫn giữ đủ thông tin bắt buộc của hành động.
+
 ${input.repair ? `SỬA BẢN NHÁP CỦA LƯỢT NÀY\nLý do chưa duyệt: ${input.repair.reason}\nBản nháp bị loại (không phải ký ức): ${input.repair.rejectedReply ?? '(lỗi định dạng)'}\nHãy viết lại đáp án đúng ý người chơi và khắc phục lý do trên. Không hỏi người chơi lặp lại khi đã hiểu ý họ.` : ''}
 
 Trả về đúng JSON theo schema. factIdsUsed là dấu vết kiểm tra: chỉ liệt kê ID trong danh mục mà câu trả lời thực sự dùng và phải chứa đủ ID bắt buộc; có thể là [] nếu chỉ đang hỏi lại hoặc phản hồi xã giao. Hãy diễn đạt tự nhiên bằng giọng riêng của nhân vật, nhưng giữ nguyên mọi số tiền, mã, tên riêng và trạng thái quan trọng. Nếu chỉ phản hồi điều người chơi vừa nói, có thể dẫn ID player-claim tương ứng. Dữ kiện có ID bắt đầu bằng player-claim chỉ chứng minh người chơi vừa nói điều đó, không chứng minh nội dung ấy đúng.`;
