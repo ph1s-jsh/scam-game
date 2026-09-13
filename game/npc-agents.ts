@@ -264,12 +264,13 @@ export function selectNpcAgent(
               (word, offset) => messageWords[wordIndex + offset] === word,
             ),
           );
-          return index < 0 ? [] : [{ agent, index, agentOrder }];
+          return index < 0 ? [] : [{ agent, index, agentOrder,
+            vocative: messageWords[index + aliasWords.length] === 'ơi' ? 1 : 0 }];
         }),
       )
       .sort(
         (left, right) =>
-          left.index - right.index || left.agentOrder - right.agentOrder,
+          right.vocative - left.vocative || left.index - right.index || left.agentOrder - right.agentOrder,
       )[0]?.agent;
     if (addressed) return addressed;
 

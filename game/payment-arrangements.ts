@@ -80,6 +80,10 @@ function matchesTrustedContactCash(value: string) {
 function triggerMatches(option: PaymentAlternative, text: string) {
   const value = searchable(text);
   if (!value) return false;
+  // Questions and reported/negated intentions are conversation, not consent.
+  if (/[?？]/u.test(text) ||
+    /\b(?:neu|gia su|hoi|cach|co the|co nen|duoc khong|duoc ko|duoc kh|duoc k|dc khong|dc ko|dc kh|dc k)\b/.test(value) ||
+    /\b(?:khong|ko|kh|k|chua)$/.test(value)) return false;
   // Inspect the action clause, not unrelated reasons such as "không có tiền".
   if (option.trigger === 'cancel-order') {
     if (
@@ -94,7 +98,7 @@ function triggerMatches(option: PaymentAlternative, text: string) {
         /\b(?:huy don|huy giup|khong nhan don|khong nhan thuoc)\b/.test(
           action,
         ) &&
-        !/\b(?:khong|chua|dung)\s+(?:(?:muon|can|nen|voi)\s+)*huy\b/.test(
+        !/\b(?:khong|ko|kh|k|chua|dung)\s+(?:(?:muon|can|nen|voi|bao|noi|yeu cau)\s+)*huy\b/.test(
           action,
         ) &&
         !/\b(?:chua|dung)\s+khong nhan\b/.test(action)

@@ -922,7 +922,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         : next.pendingNpcTurns;
       const warnsFamily = Boolean(
         thread.isGroup &&
-        /lừa|giả|hack|chiếm|đừng bấm|đừng chuyển|cảnh giác|mất tài khoản/i.test(
+        /lừa đảo|giả mạo|bị hack|chiếm (?:đoạt|tài khoản)|đừng bấm|đừng chuyển|cảnh giác|mất tài khoản/i.test(
           text,
         ),
       );
@@ -1097,7 +1097,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           senderLabel: thread?.isGroup ? pending.senderLabel : undefined,
           agentId: pending.agentId,
           responseMode,
-          text: action.text.trim().slice(0, 400),
+          text: action.text.trim(),
           time: action.time,
         },
       );

@@ -260,10 +260,6 @@ export function parseFirebaseNpcResult(value: string): FirebaseNpcResult {
       'Không viết URL thật; chỉ nhắc tới thẻ liên kết mô phỏng có sẵn.',
     );
   const reply = parsed.reply.trim();
-  if (reply.split(/\s+/).length > 60 || reply.length > 400)
-    throw new NpcFormatError(
-      'Viết lại ngắn hơn 60 từ và 400 ký tự, giữ trọn ý.',
-    );
   return {
     reply,
     move: parsed.move as NpcDirectorMove,
