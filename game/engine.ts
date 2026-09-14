@@ -881,7 +881,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         text,
         turnId: action.turnId,
       });
-      const settlementOnReply =
+      const proposedSettlement =
         plan.responseKind !== 'local' && plan.disposition !== 'ignore'
           ? findPaymentArrangement({
               state,
@@ -891,13 +891,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
               text,
             })
           : null;
-      const settlementConfiguration = settlementOnReply
-        ? paymentAlternativeFor(
-            scenario,
-            settlementOnReply.requestId,
-            settlementOnReply.optionId,
-          )
-        : null;
+      // Chat can suggest an action, but only a separate click authorizes it.
       const playerMessageId = `${action.turnId}-player`;
       let next = appendMessage(state, action.threadId, {
         id: playerMessageId,
@@ -906,14 +900,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         time: action.time,
         deliveryStatus: plan.deliveryStatus,
         npcIgnored:
-          !settlementOnReply &&
           (plan.disposition === 'ignore' || plan.disposition === 'seen'),
       });
       next = teachMessageFactsToObservers(next, scenario, thread, text);
       // New substantive input replaces the obsolete reply, but all player
       // messages stay in the transcript. A late completion cannot match its ID.
       const replacesReply = Boolean(
-        settlementOnReply ||
         plan.disposition === 'reply' ||
         plan.disposition === 'reply_later',
       );
@@ -928,6 +920,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       );
       next = {
         ...next,
+        arrangementProposals: [
+          ...(state.arrangementProposals ?? []).filter(p => p.threadId !== thread.id),
+          ...(proposedSettlement ? [{
+            id: action.turnId, runId: state.runId, threadId: thread.id,
+            agentId: agent.agentId, memoryScopeId: `${state.runId}:${agent.memoryKey}`,
+            senderLabel: agent.name, playerMessageId, delayMs: 0,
+            responseKind: 'ai' as const, settlementOnReply: proposedSettlement,
+          }] : []),
+        ],
         failedNpcTurns: replacesReply
           ? (next.failedNpcTurns ?? []).filter(
               (turn) => turn.threadId !== thread.id,
@@ -935,7 +936,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           : next.failedNpcTurns,
         familyWarned: next.familyWarned || warnsFamily,
         pendingNpcTurns:
-          settlementOnReply ||
           plan.disposition === 'reply' ||
           plan.disposition === 'reply_later'
             ? [
@@ -948,45 +948,18 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                   memoryScopeId: `${state.runId}:${agent.memoryKey}`,
                   senderLabel: agent.name,
                   playerMessageId,
-                  delayMs: settlementOnReply
-                    ? Math.max(plan.delayMs, 6_500)
-                    : plan.delayMs,
-                  // A recognized payment arrangement remains deterministic in
-                  // the reducer, while the NPC's acknowledgement is still
-                  // generated in character. Failed generation never commits
-                  // the arrangement or inserts configured dialogue.
-                  responseKind: settlementOnReply
-                    ? 'ai'
-                    : (plan.responseKind ?? 'ai'),
-                  localReply: settlementOnReply ? undefined : plan.localReply,
-                  responseGuidance:
-                    settlementConfiguration?.option.npcGuidance ??
-                    plan.responseGuidance,
-                  settlementOnReply: settlementOnReply ?? undefined,
+                  delayMs: plan.delayMs,
+                  responseKind: plan.responseKind ?? 'ai',
+                  localReply: plan.localReply,
+                  responseGuidance: proposedSettlement
+                    ? 'Người chơi có một đề nghị chưa xác nhận. Chưa có hành động được thực hiện. Không nói đã hủy hoặc đã chọn cách thanh toán; người chơi cần xác nhận trên thẻ hành động.'
+                    : plan.responseGuidance,
                 },
               ]
             : remainingTurns,
       };
-      const settlementUnlockEventId =
-        settlementConfiguration?.request.unlockEventId;
-      if (
-        settlementUnlockEventId &&
-        !next.triggeredEventIds.includes(settlementUnlockEventId)
-      ) {
-        next = {
-          ...next,
-          queuedEventBeats: {
-            ...next.queuedEventBeats,
-            [settlementUnlockEventId]: Math.min(
-              next.queuedEventBeats[settlementUnlockEventId] ??
-                Number.POSITIVE_INFINITY,
-              next.tick + 1,
-            ),
-          },
-        };
-      }
       const progressed =
-        plan.advancesStory || settlementOnReply
+        plan.advancesStory
           ? advanceStory(next, scenario, 2)
           : next;
       return progressed.pendingNpcTurns.some(
@@ -1101,7 +1074,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           time: action.time,
         },
       );
-      next = applyPendingPaymentArrangement(next, scenario, pending);
+      // Generated dialogue never commits a payment arrangement.
       if (
         state.screen === 'phone' &&
         (state.activeApp !== 'messages' ||
@@ -1117,6 +1090,25 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         });
       }
       return syncStoryEvents(next, scenario);
+    }
+
+    case 'DISMISS_ARRANGEMENT':
+    case 'CONFIRM_ARRANGEMENT': {
+      if (action.runId !== state.runId) return state;
+      const proposal = (state.arrangementProposals ?? []).find(p => p.id === action.proposalId);
+      if (!proposal || proposal.runId !== state.runId) return state;
+      const next = { ...state,
+        arrangementProposals: (state.arrangementProposals ?? []).filter(p => p.id !== proposal.id),
+        pendingNpcTurns: state.pendingNpcTurns.map(p => p.threadId === proposal.threadId ? {...p, responseGuidance: undefined} : p),
+      };
+      if (action.type === 'DISMISS_ARRANGEMENT') return next;
+      if (state.blockedThreadIds.includes(proposal.threadId)) return next;
+      const configured = validatedPendingAlternative(state, scenario, proposal);
+      if (!configured) return next;
+      return syncStoryEvents(appendMessage(applyPendingPaymentArrangement(next, scenario, proposal), proposal.threadId, {
+        author: 'system', text: `Bạn đã xác nhận: ${configured.option.label}`,
+        time: (state.messages[proposal.threadId] ?? []).at(-1)?.time ?? '18:36',
+      }), scenario);
     }
 
     case 'NPC_FAILED': {

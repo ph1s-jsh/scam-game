@@ -369,11 +369,14 @@ export interface GameState {
   familyWarned: boolean;
   pendingNpcTurns: PendingNpcTurn[];
   failedNpcTurns?: PendingNpcTurn[];
+  arrangementProposals?: PendingNpcTurn[];
   npcReplyModes: Record<string, NpcReplyMode>;
   debrief: Debrief | null;
 }
 
 export type GameAction =
+  | { type: 'CONFIRM_ARRANGEMENT'; proposalId: string; runId: string }
+  | { type: 'DISMISS_ARRANGEMENT'; proposalId: string; runId: string }
   | { type: 'START'; characterId: CharacterId; runId: string }
   | { type: 'UNLOCK' }
   | { type: 'OPEN_APP'; appId: PhoneAppId }

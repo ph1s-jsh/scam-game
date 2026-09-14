@@ -956,6 +956,18 @@ function ChatThread({
       </div>
 
       <div className="shrink-0 border-t border-slate-200 bg-white px-3 pb-3 pt-2">
+        {!isBlocked && (state.arrangementProposals ?? []).filter(p => p.threadId === thread.id).map(proposal => {
+          const request = scenario.paymentRequests.find(r => r.id === proposal.settlementOnReply?.requestId);
+          const option = request?.alternatives?.find(o => o.id === proposal.settlementOnReply?.optionId);
+          if (!option) return null;
+          return <div key={proposal.id} className="mb-2 rounded-xl bg-slate-100 p-3 text-sm">
+            <p>Chưa thực hiện. Bạn muốn xác nhận: {option.label}</p>
+            <div className="mt-2 flex gap-2">
+              <Button type="button" onClick={() => dispatch({type: 'CONFIRM_ARRANGEMENT', proposalId: proposal.id, runId: state.runId})}>Xác nhận</Button>
+              <Button type="button" variant="outline" onClick={() => dispatch({type: 'DISMISS_ARRANGEMENT', proposalId: proposal.id, runId: state.runId})}>Bỏ qua</Button>
+            </div>
+          </div>;
+        })}
         {failedTurn && !isBlocked ? (
           <output
             className="mb-2 flex items-center justify-between gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900"
