@@ -153,21 +153,21 @@ function formatMoney(amount: number) {
 
 function CharacterSelect({ onStart }: { onStart: (id: CharacterId) => void }) {
   return (
-    <main className="min-h-dvh bg-[radial-gradient(circle_at_top,#21304d_0%,#0b1220_42%,#050914_100%)] px-4 py-8 text-white sm:py-12">
-      <section className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-5xl flex-col justify-center">
-        <div className="mb-8 max-w-2xl">
-          <div className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
-            <Smartphone className="size-6 text-cyan-300" />
-          </div>
-          <p className="mb-2 text-sm font-medium tracking-[0.16em] text-cyan-300 uppercase">
+    <main className="relative min-h-dvh overflow-hidden bg-[radial-gradient(circle_at_top,#eaf3ff_0%,#dfeaf9_18%,#cfdff3_45%,#b7cfe9_100%)] px-4 py-8 text-slate-900 sm:py-12">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(59,130,246,0.12),transparent_20%),radial-gradient(circle_at_90%_18%,rgba(14,165,233,0.12),transparent_22%),radial-gradient(circle_at_50%_80%,rgba(148,163,184,0.14),transparent_18%)]" />
+      <section className="relative mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-6xl flex-col justify-center">
+        <div className="mb-8 max-w-3xl">
+          <div className="mb-5 inline-flex items-center gap-3 rounded-full border border-sky-200 bg-white/80 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700 shadow-sm backdrop-blur-sm">
+            <Smartphone className="size-4 text-sky-600" />
             Một nhà · Ba màn hình
-          </p>
-          <h1 className="text-4xl font-semibold tracking-[-0.045em] sm:text-6xl">
+          </div>
+          <h1 className="font-editorial text-4xl leading-none tracking-[-0.06em] text-slate-900 sm:text-5xl lg:text-7xl">
             Bạn sẽ cầm điện thoại của ai?
           </h1>
-          <p className="mt-4 max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
+          <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">
             Cùng một gia đình, cùng những việc rất bình thường — nhưng mỗi người
-            chỉ nhìn thấy một phần câu chuyện.
+            chỉ nhìn thấy một phần câu chuyện. Và mỗi phần, đều có thể bắt đầu
+            bằng một tin nhắn lạ.
           </p>
         </div>
 
@@ -176,31 +176,32 @@ function CharacterSelect({ onStart }: { onStart: (id: CharacterId) => void }) {
             const Icon = characterIcons[profile.id];
             return (
               <button
-                className="group relative min-h-64 overflow-hidden rounded-[2rem] border border-white/12 bg-white/[0.07] p-5 text-left shadow-2xl backdrop-blur transition hover:-translate-y-1 hover:border-white/25 hover:bg-white/[0.11] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transform-none"
+                className="group relative min-h-[18rem] overflow-hidden rounded-[1.8rem] border border-slate-200/80 bg-white/70 p-5 text-left shadow-[0_20px_42px_rgba(15,23,42,0.08)] transition duration-200 hover:-translate-y-1 hover:border-sky-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 motion-reduce:transform-none"
                 key={profile.id}
                 onClick={() => onStart(profile.id)}
                 type="button"
               >
+                <div className="absolute inset-x-4 bottom-0 h-20 rounded-t-[1.6rem] bg-gradient-to-t from-slate-900/4 to-transparent" />
                 <div
-                  className={`mb-8 flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br ${profile.accent} text-xl font-semibold text-slate-950 shadow-lg`}
+                  className={`relative mb-8 flex size-16 items-center justify-center rounded-[1.15rem] bg-gradient-to-br ${profile.accent} text-xl font-semibold text-slate-900 shadow-[0_12px_24px_rgba(15,23,42,0.12)]`}
                 >
                   {profile.initials}
                 </div>
-                <div className="flex items-start justify-between gap-3">
+                <div className="relative flex items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-2xl font-semibold tracking-tight">
+                    <h2 className="font-editorial text-3xl leading-none tracking-[-0.06em] text-slate-900">
                       {profile.name}
                     </h2>
-                    <p className="mt-1 text-sm text-slate-300">
+                    <p className="mt-2 text-sm text-slate-500">
                       {profile.age} · {profile.role}
                     </p>
                   </div>
-                  <Icon className="mt-1 size-5 text-slate-400 transition group-hover:text-cyan-300" />
+                  <Icon className="mt-1 size-5 text-slate-400 transition group-hover:text-sky-600" />
                 </div>
-                <p className="mt-5 text-sm leading-6 text-slate-300">
+                <p className="relative mt-5 text-sm leading-6 text-slate-600">
                   {profile.description}
                 </p>
-                <span className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-cyan-300">
+                <span className="relative mt-7 inline-flex items-center gap-2 text-sm font-semibold text-sky-700">
                   Cầm điện thoại <span aria-hidden>→</span>
                 </span>
               </button>
@@ -268,15 +269,15 @@ function LockScreen({
       className={`relative flex h-full flex-col bg-gradient-to-br ${scenario.profile.wallpaper} px-5 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[calc(4rem+env(safe-area-inset-top))] text-white`}
     >
       <StatusBar scenario={scenario} state={state} light />
-      <div className="mt-10 text-center drop-shadow">
-        <p className="text-6xl font-light tracking-[-0.07em]">
+      <div className="mt-10 text-center drop-shadow-sm">
+        <p className="text-6xl font-light tracking-[-0.07em] text-white/95">
           {gameTime(scenario, state.elapsedMinutes)}
         </p>
-        <p className="mt-2 text-sm text-white/80">{scenario.dayLabel}</p>
+        <p className="mt-2 text-sm text-white/75">{scenario.dayLabel}</p>
       </div>
 
       <div className="mt-auto space-y-2.5">
-        <p className="mb-3 px-1 text-xs font-medium text-white/75">
+        <p className="mb-3 px-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
           {state.notifications.length} thông báo
         </p>
         {state.notifications.slice(0, 4).map((notification) => {
@@ -285,24 +286,24 @@ function LockScreen({
             : null;
           return (
             <div
-              className="flex min-h-16 w-full items-center rounded-2xl border border-white/25 bg-white/82 text-slate-950 shadow-lg backdrop-blur-xl transition hover:bg-white"
+              className="flex min-h-16 w-full items-center rounded-[1.4rem] border border-white/20 bg-white/80 text-slate-900 shadow-[0_18px_28px_rgba(15,23,42,0.14)] backdrop-blur-md transition hover:bg-white"
               key={notification.id}
             >
               <button
-                className="min-w-0 flex-1 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                className="min-w-0 flex-1 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
                 onClick={() =>
                   openNotification(notification.threadId, notification.app)
                 }
                 type="button"
               >
-                <span className="flex items-center gap-2 text-xs font-semibold">
-                  <Bell className="size-3.5 text-indigo-600" />
+                <span className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.04em] text-slate-700">
+                  <Bell className="size-3.5 text-sky-600" />
                   {notification.title}
-                  <span className="ml-auto font-normal text-slate-500">
+                  <span className="ml-auto font-normal text-slate-400">
                     {notification.time}
                   </span>
                 </span>
-                <span className="mt-1.5 line-clamp-2 block text-sm text-slate-700">
+                <span className="mt-1.5 line-clamp-2 block text-sm leading-5 text-slate-600">
                   {notification.body}
                 </span>
               </button>
@@ -320,7 +321,7 @@ function LockScreen({
           );
         })}
         <Button
-          className="mt-4 h-12 w-full rounded-2xl bg-white text-slate-950 hover:bg-white/90"
+          className="mt-4 h-12 w-full rounded-[1.25rem] bg-white text-slate-900 shadow-[0_16px_28px_rgba(15,23,42,0.12)] hover:bg-slate-50"
           onClick={() => dispatch({ type: 'UNLOCK' })}
         >
           <LockKeyhole /> Mở điện thoại của {scenario.profile.name}
@@ -346,24 +347,49 @@ function HomeScreen({
   const canEnd = storyCanEnd(state, scenario);
   return (
     <div
-      className={`flex h-full flex-col overflow-y-auto bg-gradient-to-br ${scenario.profile.wallpaper} px-5 pb-24 pt-[calc(3.5rem+env(safe-area-inset-top))] text-slate-950`}
+      className={`relative flex h-full flex-col overflow-y-auto bg-gradient-to-br ${scenario.profile.wallpaper} px-5 pb-24 pt-[calc(3.5rem+env(safe-area-inset-top))] text-slate-950`}
     >
-      <div className="flex items-center justify-between">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_15%,rgba(148,163,184,0.18),transparent_18%),radial-gradient(circle_at_85%_15%,rgba(59,130,246,0.12),transparent_18%)]" />
+      <div className="relative flex items-center justify-between">
         <div>
-          <p className="text-sm text-slate-700">Chào buổi tối,</p>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <p className="text-sm font-medium text-slate-500">Chào buổi tối,</p>
+          <h1 className="font-editorial text-3xl leading-none tracking-[-0.06em] text-slate-900">
             {scenario.profile.name}
           </h1>
         </div>
         <div
-          className={`flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br ${scenario.profile.accent} font-semibold shadow-md`}
+          className={`flex size-12 items-center justify-center rounded-[1.2rem] bg-gradient-to-br ${scenario.profile.accent} font-semibold text-slate-900 shadow-[0_12px_18px_rgba(15,23,42,0.08)]`}
         >
           {scenario.profile.initials}
         </div>
       </div>
 
+      <div className="relative mt-6">
+        <div className="flex items-center justify-between gap-3 rounded-full border border-slate-200/80 bg-white/55 px-3 py-2.5 shadow-[0_10px_22px_rgba(15,23,42,0.05)] backdrop-blur-xl">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="grid size-7 place-items-center rounded-full bg-sky-100 text-sky-700">
+              <Bell className="size-3.5" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                Thông báo
+              </p>
+              <p className="truncate text-[11px] font-medium text-slate-600">
+                {state.notifications.length} tin mới
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="inline-flex min-h-6 min-w-6 items-center justify-center rounded-full bg-slate-900 px-1.5 text-[10px] font-semibold text-white">
+              {state.notifications.length}
+            </span>
+          </div>
+        </div>
+      </div>
+
       <nav
-        className="mt-10 grid grid-cols-3 gap-x-5 gap-y-7"
+        className="relative mt-8 grid grid-cols-3 gap-x-5 gap-y-7"
         aria-label="Ứng dụng trên điện thoại"
       >
         {phoneApps.map((app) => {
@@ -372,38 +398,38 @@ function HomeScreen({
           return (
             <button
               aria-label={`${app.name}${badge ? `, ${badge} thông báo chưa đọc` : ''}`}
-              className="relative flex min-h-20 flex-col items-center gap-2 rounded-xl text-xs font-medium text-slate-800 outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
+              className="group relative flex min-h-20 flex-col items-center gap-2 rounded-[1.4rem] border border-slate-200/80 bg-white/50 p-2 text-xs font-medium text-slate-800 outline-none shadow-[0_10px_20px_rgba(15,23,42,0.05)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-white/60 focus-visible:ring-2 focus-visible:ring-sky-500"
               key={app.id}
               onClick={() => dispatch({ type: 'OPEN_APP', appId: app.id })}
               type="button"
             >
               <span
-                className={`relative flex size-14 items-center justify-center rounded-[1.15rem] ${app.color} text-white shadow-lg`}
+                className={`relative flex size-14 items-center justify-center rounded-[1.2rem] ${app.color} text-white shadow-[0_12px_20px_rgba(15,23,42,0.12)]`}
               >
                 <Icon className="size-7" />
                 {badge ? (
-                  <span className="absolute -right-1.5 -top-1.5 grid min-h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white ring-2 ring-slate-100">
+                  <span className="absolute -right-1.5 -top-1.5 grid min-h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white ring-2 ring-white">
                     {badge}
                   </span>
                 ) : null}
               </span>
-              {app.name}
+              <span className="text-[11px] leading-4 tracking-[0.02em]">{app.name}</span>
             </button>
           );
         })}
       </nav>
 
-      <div className="mt-auto space-y-2 pt-8">
+      <div className="relative mt-auto space-y-2 pt-8">
         {canEnd ? (
           <Button
-            className="h-11 w-full rounded-2xl bg-slate-900 text-white hover:bg-slate-800"
+            className="h-11 w-full rounded-[1.2rem] bg-slate-900 text-white shadow-[0_18px_28px_rgba(15,23,42,0.12)] hover:bg-slate-800"
             onClick={onFinish}
           >
             <Clock3 /> Xem lại diễn biến
           </Button>
         ) : null}
         <button
-          className="min-h-11 w-full rounded-xl text-xs text-slate-700 hover:bg-white/30"
+          className="min-h-11 w-full rounded-[1rem] text-xs font-medium text-slate-700 transition hover:bg-white/60"
           onClick={onReset}
           type="button"
         >
@@ -430,10 +456,10 @@ function AppHeader({
   onIdentityOpen?: () => void;
 }) {
   return (
-    <header className="flex min-h-16 shrink-0 items-center gap-2 border-b border-slate-200 bg-white/95 px-3 pb-2 pt-[calc(2.5rem+env(safe-area-inset-top))] backdrop-blur">
+    <header className="flex min-h-16 shrink-0 items-center gap-2 border-b border-slate-200/90 bg-white/85 px-3 pb-2 pt-[calc(2.5rem+env(safe-area-inset-top))] shadow-[0_12px_24px_rgba(15,23,42,0.04)] backdrop-blur-md">
       <button
         aria-label="Quay lại"
-        className="grid size-11 place-items-center rounded-full text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        className="grid size-11 place-items-center rounded-full text-slate-600 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
         onClick={onBack}
         type="button"
       >
@@ -441,7 +467,7 @@ function AppHeader({
       </button>
       {onIdentityOpen ? (
         <button
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-[1rem] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
           onClick={onIdentityOpen}
           type="button"
         >
@@ -453,11 +479,11 @@ function AppHeader({
             </span>
           ) : null}
           <span className="min-w-0">
-            <span className="block truncate text-base font-semibold">
+            <span className="block truncate text-base font-semibold text-slate-900">
               {title}
             </span>
             {subtitle ? (
-              <span className="block truncate text-xs text-slate-500">
+              <span className="block truncate text-[11px] text-slate-500">
                 {subtitle}
               </span>
             ) : null}
@@ -465,9 +491,9 @@ function AppHeader({
         </button>
       ) : (
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-base font-semibold">{title}</h1>
+          <h1 className="truncate text-base font-semibold text-slate-900">{title}</h1>
           {subtitle ? (
-            <p className="truncate text-xs text-slate-500">{subtitle}</p>
+            <p className="truncate text-[11px] text-slate-500">{subtitle}</p>
           ) : null}
         </div>
       )}
@@ -643,7 +669,7 @@ function MessagesApp({
     (thread) => (state.messages[thread.id]?.length ?? 0) > 0,
   );
   return (
-    <div className="flex h-full flex-col bg-slate-50 text-slate-950">
+    <div className="flex h-full flex-col bg-[#edf2f9] text-slate-950">
       <AppHeader
         title="Tin nhắn"
         subtitle={`${visibleThreads.length} cuộc trò chuyện`}
@@ -661,12 +687,12 @@ function MessagesApp({
           const identity = identityForThread(scenario.id, thread.id);
           return (
             <div
-              className="flex min-h-20 w-full items-center gap-2 rounded-2xl px-2 py-2.5 hover:bg-white"
+              className="flex min-h-20 w-full items-center gap-2 rounded-[1.35rem] border border-slate-200/60 bg-white/70 px-2 py-2.5 shadow-[0_10px_20px_rgba(15,23,42,0.04)] transition hover:bg-white"
               key={thread.id}
             >
               <button
                 aria-label={`Xem hồ sơ ${thread.title}`}
-                className="grid size-12 shrink-0 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                className="grid size-12 shrink-0 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
                 disabled={!identity}
                 onClick={() => identity && onInspectIdentity(identity)}
                 type="button"
@@ -678,21 +704,21 @@ function MessagesApp({
                 </span>
               </button>
               <button
-                className="min-w-0 flex-1 rounded-xl px-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                className="min-w-0 flex-1 rounded-xl px-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
                 onClick={() =>
                   dispatch({ type: 'OPEN_THREAD', threadId: thread.id })
                 }
                 type="button"
               >
                 <span className="flex items-center gap-2">
-                  <span className="truncate font-semibold">{thread.title}</span>
+                  <span className="truncate font-semibold text-slate-900">{thread.title}</span>
                   {isUnread ? (
                     <span
-                      className="size-2 rounded-full bg-blue-600"
+                      className="size-2 rounded-full bg-sky-600"
                       aria-label="Chưa đọc"
                     />
                   ) : null}
-                  <span className="ml-auto text-xs text-slate-400">
+                  <span className="ml-auto text-[11px] text-slate-400">
                     {last?.time}
                   </span>
                 </span>
@@ -782,7 +808,7 @@ function ChatThread({
     (call) => call.id === threadIdentity?.linkedCallId,
   );
   return (
-    <div className="flex h-full flex-col bg-[#f4f6fa] text-slate-950">
+    <div className="flex h-full flex-col bg-[#eef3fb] text-slate-950">
       <AppHeader
         title={thread.title}
         subtitle={
@@ -831,7 +857,7 @@ function ChatThread({
       />
 
       <div
-        className="min-h-0 flex-1 overflow-y-auto px-4 py-5"
+        className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,#eef3fb_0%,#f6f8fc_100%)] px-4 py-5"
         onScroll={(event) => {
           const element = event.currentTarget;
           shouldStickToBottomRef.current =
@@ -841,7 +867,7 @@ function ChatThread({
         }}
         ref={scrollAreaRef}
       >
-        <p className="mb-5 text-center text-[11px] text-slate-400">Hôm nay</p>
+        <p className="mb-5 text-center text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">Hôm nay</p>
         <div
           className="space-y-3"
           role="log"
@@ -854,7 +880,7 @@ function ChatThread({
               key={message.id}
             >
               <div
-                className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 shadow-sm ${message.author === 'player' ? 'rounded-br-md bg-blue-600 text-white' : message.author === 'system' ? 'bg-slate-200 text-slate-700' : 'rounded-bl-md bg-white text-slate-800'}`}
+                className={`max-w-[82%] rounded-[1.4rem] px-3.5 py-2.5 ${message.author === 'player' ? 'chat-bubble-user rounded-br-md' : message.author === 'system' ? 'rounded-[1.4rem] bg-slate-200 text-slate-700' : 'chat-bubble-other rounded-bl-md'}`}
               >
                 {message.senderLabel
                   ? (() => {
@@ -864,14 +890,14 @@ function ChatThread({
                       );
                       return senderIdentity ? (
                         <button
-                          className="mb-1 block text-[11px] font-semibold opacity-65 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-current"
+                          className="mb-1 block text-[11px] font-semibold opacity-70 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-current"
                           onClick={() => onInspectIdentity(senderIdentity)}
                           type="button"
                         >
                           {message.senderLabel}
                         </button>
                       ) : (
-                        <p className="mb-1 text-[11px] font-semibold opacity-65">
+                        <p className="mb-1 text-[11px] font-semibold opacity-70">
                           {message.senderLabel}
                         </p>
                       );
@@ -883,7 +909,7 @@ function ChatThread({
                 {message.browserLink ? (
                   <button
                     aria-label={`Mở ${message.browserLink.label} trong trình duyệt mô phỏng`}
-                    className={`mt-2 flex min-h-10 w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-semibold underline decoration-1 underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${message.author === 'player' ? 'border-blue-400 bg-blue-500 text-white' : 'border-blue-200 bg-blue-50 text-blue-700'}`}
+                    className={`mt-2 flex min-h-10 w-full items-center gap-2 rounded-[0.9rem] border px-3 py-2 text-left text-xs font-semibold underline decoration-1 underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${message.author === 'player' ? 'border-sky-300 bg-sky-500/10 text-sky-800' : 'border-sky-200 bg-sky-50 text-sky-700'}`}
                     onClick={() =>
                       dispatch({
                         type: 'OPEN_MESSAGE_LINK',
@@ -901,7 +927,7 @@ function ChatThread({
                   </button>
                 ) : null}
                 <p
-                  className={`mt-1 flex items-center gap-1.5 text-[11px] ${message.author === 'player' ? 'text-blue-100' : 'text-slate-400'}`}
+                  className={`mt-1 flex items-center gap-1.5 text-[11px] ${message.author === 'player' ? 'text-sky-900/75' : 'text-slate-400'}`}
                 >
                   <span>{message.time}</span>
                   {message.author === 'player' && message.deliveryStatus ? (
@@ -924,7 +950,7 @@ function ChatThread({
             <output className="sr-only">{thread.title} đang nhập</output>
             <div
               aria-hidden
-              className="flex gap-1 rounded-2xl rounded-bl-md bg-white px-4 py-3 shadow-sm"
+              className="flex gap-1 rounded-[1.2rem] rounded-bl-md bg-white px-4 py-3 shadow-[0_8px_16px_rgba(15,23,42,0.06)]"
             >
               {[0, 1, 2].map((index) => (
                 <span
@@ -955,7 +981,7 @@ function ChatThread({
         <div ref={bottomRef} />
       </div>
 
-      <div className="shrink-0 border-t border-slate-200 bg-white px-3 pb-3 pt-2">
+      <div className="shrink-0 border-t border-slate-200 bg-white/90 px-3 pb-3 pt-2 backdrop-blur-sm">
         {!isBlocked && (state.arrangementProposals ?? []).filter(p => p.threadId === thread.id).map(proposal => {
           const request = scenario.paymentRequests.find(r => r.id === proposal.settlementOnReply?.requestId);
           const option = request?.alternatives?.find(o => o.id === proposal.settlementOnReply?.optionId);
@@ -970,7 +996,7 @@ function ChatThread({
         })}
         {failedTurn && !isBlocked ? (
           <output
-            className="mb-2 flex items-center justify-between gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900"
+            className="mb-2 flex items-center justify-between gap-2 rounded-[1rem] bg-amber-50 px-3 py-2 text-sm text-amber-900"
           >
             <span>
               Chưa nhận được phản hồi. Bạn có thể thử lại hoặc nhắn tiếp.
@@ -1000,7 +1026,7 @@ function ChatThread({
             <div className="flex items-end gap-2">
               <textarea
                 aria-label={`Nhắn cho ${thread.title}`}
-                className="max-h-28 min-h-11 flex-1 resize-none rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="max-h-28 min-h-11 flex-1 resize-none rounded-[1.2rem] border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if (
@@ -1018,7 +1044,7 @@ function ChatThread({
               />
               <button
                 aria-label="Gửi tin nhắn"
-                className="grid size-11 place-items-center rounded-full bg-blue-600 text-white disabled:opacity-40"
+                className="grid size-11 place-items-center rounded-full bg-sky-600 text-white shadow-[0_10px_16px_rgba(14,165,233,0.28)] disabled:opacity-40"
                 disabled={!draft.trim() || isBlocked}
                 onClick={send}
                 type="button"
@@ -1828,123 +1854,137 @@ function DebriefScreen({
   } as const;
   const safe = debrief.outcome === 'safe';
   return (
-    <div className="h-full overflow-y-auto bg-slate-50 px-5 pb-10 pt-[calc(3.5rem+env(safe-area-inset-top))] text-slate-950">
-      <p
-        className={`mx-auto w-fit rounded-full px-3 py-1 text-xs font-bold tracking-[0.12em] ${safe ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}
-      >
-        {safe ? 'KHÔNG BỊ LỪA' : 'ĐÃ BỊ LỪA'}
-      </p>
-      <div
-        className={`mx-auto mt-4 grid size-24 place-items-center rounded-full text-center text-white shadow-xl ${safe ? 'bg-emerald-700' : 'bg-rose-700'}`}
-      >
-        <div>
-          <p className="text-3xl font-semibold">{debrief.score}</p>
-          <p className="text-[10px] text-slate-300">/ 100</p>
+    <div className="h-full overflow-y-auto bg-[radial-gradient(circle_at_top,#edf4ff_0%,#eaf0f5_20%,#f7f8f9_100%)] px-5 pb-10 pt-[calc(3.5rem+env(safe-area-inset-top))] text-slate-950">
+      <div className="mx-auto max-w-md">
+        <div
+          className={`mx-auto w-fit rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] ${safe ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}
+        >
+          {safe ? 'KHÔNG BỊ LỪA' : 'ĐÃ BỊ LỪA'}
         </div>
-      </div>
-      <p className="mt-5 text-center text-xs font-semibold tracking-[0.15em] text-blue-600 uppercase">
-        Tổng kết buổi tối
-      </p>
-      <h1 className="mt-2 text-center text-3xl font-semibold tracking-tight">
-        {debrief.title}
-      </h1>
-      <p className="mt-3 text-center text-sm leading-6 text-slate-600">
-        {debrief.summary}
-      </p>
+        <div
+          className={`mx-auto mt-5 grid size-28 place-items-center rounded-full border border-white/80 text-center text-white shadow-[0_20px_36px_rgba(15,23,42,0.18)] ${safe ? 'bg-gradient-to-br from-emerald-500 to-emerald-700' : 'bg-gradient-to-br from-rose-500 to-rose-700'}`}
+        >
+          <div>
+            <p className="font-editorial text-4xl leading-none tracking-[-0.06em]">
+              {debrief.score}
+            </p>
+            <p className="mt-1 text-[10px] uppercase tracking-[0.16em] text-slate-200">
+              / 100
+            </p>
+          </div>
+        </div>
+        <p className="mt-5 text-center text-[10px] font-semibold tracking-[0.18em] text-sky-700 uppercase">
+          Tổng kết buổi tối
+        </p>
+        <h1 className="mt-2 text-center font-editorial text-4xl leading-none tracking-[-0.06em] text-slate-900">
+          {debrief.title}
+        </h1>
+        <p className="mt-3 text-center text-sm leading-6 text-slate-600">
+          {debrief.summary}
+        </p>
 
-      <section className="mt-7 rounded-3xl bg-white p-4 shadow-sm">
-        <h2 className="font-semibold">Bốn mặt của lựa chọn</h2>
-        <div className="mt-4 space-y-4">
-          {debrief.dimensions.map((dimension) => (
-            <div key={dimension.label}>
-              <div className="flex justify-between text-xs">
-                <span>{dimension.label}</span>
-                <span className="font-semibold">{dimension.value}</span>
-              </div>
-              <div
-                aria-hidden
-                className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100"
-              >
+        <section className="mt-7 rounded-[1.8rem] border border-slate-200 bg-white/80 p-4 shadow-[0_18px_34px_rgba(15,23,42,0.06)] backdrop-blur-sm">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
+            Bốn mặt của lựa chọn
+          </h2>
+          <div className="mt-4 space-y-4">
+            {debrief.dimensions.map((dimension) => (
+              <div key={dimension.label}>
+                <div className="flex items-center justify-between text-xs text-slate-600">
+                  <span>{dimension.label}</span>
+                  <span className="font-semibold text-slate-900">{dimension.value}</span>
+                </div>
                 <div
-                  className="h-full rounded-full bg-blue-600"
-                  style={{ width: `${dimension.value}%` }}
+                  aria-hidden
+                  className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-slate-100"
+                >
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-sky-500 to-blue-600"
+                    style={{ width: `${dimension.value}%` }}
+                  />
+                </div>
+                <progress
+                  aria-label={dimension.label}
+                  className="sr-only"
+                  max={100}
+                  value={dimension.value}
                 />
               </div>
-              <progress
-                aria-label={dimension.label}
-                className="sr-only"
-                max={100}
-                value={dimension.value}
-              />
-            </div>
-          ))}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
 
-      <section className="mt-4 rounded-3xl bg-white p-4 shadow-sm">
-        <h2 className="font-semibold">Điều đã xảy ra</h2>
-        <div className="mt-3 space-y-3">
-          {debrief.timeline.map((item) => (
-            <div
-              className="flex gap-2 text-sm leading-5 text-slate-600"
-              key={item}
-            >
-              <CircleCheck className="mt-0.5 size-4 shrink-0 text-blue-600" />
-              {item}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="mt-4 rounded-3xl bg-white p-4 shadow-sm">
-        <h2 className="font-semibold">Sự thật phía sau các cuộc trò chuyện</h2>
-        <div className="mt-3 space-y-2">
-          {scenario.threads
-            .filter(
-              (thread) =>
-                thread.truth !== 'legit' ||
-                scenario.paymentRequests.some(
-                  (request) => request.sourceThreadId === thread.id,
-                ),
-            )
-            .map((thread) => (
+        <section className="mt-4 rounded-[1.8rem] border border-slate-200 bg-white/80 p-4 shadow-[0_18px_34px_rgba(15,23,42,0.06)] backdrop-blur-sm">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
+            Điều đã xảy ra
+          </h2>
+          <div className="mt-3 space-y-3">
+            {debrief.timeline.map((item) => (
               <div
-                className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2"
-                key={thread.id}
+                className="flex gap-2 text-sm leading-5 text-slate-600"
+                key={item}
               >
-                <span className="text-sm font-medium">{thread.title}</span>
-                <span className="text-right text-xs text-slate-500">
-                  {truthLabels[thread.truth]}
-                </span>
+                <CircleCheck className="mt-0.5 size-4 shrink-0 text-sky-600" />
+                <span>{item}</span>
               </div>
             ))}
-        </div>
-      </section>
+          </div>
+        </section>
 
-      <a
-        className="mt-4 flex min-h-12 items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-blue-700 shadow-sm"
-        href={scenario.sourceUrl}
-        rel="noreferrer"
-        target="_blank"
-      >
-        Case thực tế: {scenario.sourceTitle}
-        <ExternalLink className="ml-3 size-4 shrink-0" />
-      </a>
-      <p className="mt-3 text-center text-xs leading-5 text-slate-500">
-        Mọi tiền, tài khoản và mã xác nhận vừa thấy đều là dữ liệu giả lập.
-      </p>
+        <section className="mt-4 rounded-[1.8rem] border border-slate-200 bg-white/80 p-4 shadow-[0_18px_34px_rgba(15,23,42,0.06)] backdrop-blur-sm">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
+            Sự thật phía sau các cuộc trò chuyện
+          </h2>
+          <div className="mt-3 space-y-2">
+            {scenario.threads
+              .filter(
+                (thread) =>
+                  thread.truth !== 'legit' ||
+                  scenario.paymentRequests.some(
+                    (request) => request.sourceThreadId === thread.id,
+                  ),
+              )
+              .map((thread) => (
+                <div
+                  className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-2"
+                  key={thread.id}
+                >
+                  <span className="text-sm font-medium text-slate-800">
+                    {thread.title}
+                  </span>
+                  <span className="text-right text-[11px] font-medium text-slate-500">
+                    {truthLabels[thread.truth]}
+                  </span>
+                </div>
+              ))}
+          </div>
+        </section>
 
-      <div className="mt-6 grid gap-2">
-        <Button className="h-12 rounded-2xl" onClick={onReplay}>
-          <RotateCcw /> Chơi lại vai {scenario.profile.name}
-        </Button>
-        <Button
-          className="h-12 rounded-2xl"
-          variant="outline"
-          onClick={onReset}
+        <a
+          className="mt-4 flex min-h-12 items-center justify-between rounded-[1.2rem] border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 shadow-sm"
+          href={scenario.sourceUrl}
+          rel="noreferrer"
+          target="_blank"
         >
-          Chọn nhân vật khác
-        </Button>
+          Case thực tế: {scenario.sourceTitle}
+          <ExternalLink className="ml-3 size-4 shrink-0" />
+        </a>
+        <p className="mt-3 text-center text-xs leading-5 text-slate-500">
+          Mọi tiền, tài khoản và mã xác nhận vừa thấy đều là dữ liệu giả lập.
+        </p>
+
+        <div className="mt-6 grid gap-2">
+          <Button className="h-12 rounded-[1.2rem]" onClick={onReplay}>
+            <RotateCcw /> Chơi lại vai {scenario.profile.name}
+          </Button>
+          <Button
+            className="h-12 rounded-[1.2rem]"
+            variant="outline"
+            onClick={onReset}
+          >
+            Chọn nhân vật khác
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -2047,8 +2087,8 @@ function PhoneFrame({
   else content = <NotesApp scenario={scenario} dispatch={dispatch} />;
 
   return (
-    <main className="min-h-dvh overflow-hidden bg-[radial-gradient(circle_at_top,#21304d_0%,#0b1220_48%,#050914_100%)] text-white sm:grid sm:place-items-center sm:p-5">
-      <section className="relative mx-auto h-dvh w-full overflow-hidden bg-slate-100 text-slate-950 shadow-[0_40px_100px_rgb(0_0_0/55%)] sm:h-[min(880px,calc(100dvh-2.5rem))] sm:w-[430px] sm:rounded-[3rem] sm:border-[9px] sm:border-slate-950">
+    <main className="min-h-dvh overflow-hidden bg-[radial-gradient(circle_at_top,#dbeafc_0%,#d3dfe9_18%,#aebdd3_40%,#7d8ca5_100%)] text-slate-900 sm:grid sm:place-items-center sm:p-5">
+      <section className="phone-shell relative mx-auto h-dvh w-full overflow-hidden bg-slate-100 text-slate-950 sm:h-[min(930px,calc(100dvh-2.5rem))] sm:w-[430px] sm:rounded-[2.8rem] sm:border-[9px] sm:border-slate-900">
         {state.screen !== 'lock' ? (
           <StatusBar scenario={scenario} state={state} />
         ) : null}
