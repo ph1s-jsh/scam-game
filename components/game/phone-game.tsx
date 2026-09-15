@@ -2216,6 +2216,21 @@ export function PhoneGame() {
   const appCheckSetupDismissedRef = useRef(false);
 
   useEffect(() => {
+    if (!hydrated || showOnboarding || confirmReset || confirmFinish || !state.characterId) return;
+    const currentScenario = getScenario(state.characterId);
+    if (!currentScenario) return;
+    // About 28 active minutes per evening; no catch-up while hidden or paused.
+    const intervalMs = 28 * 60 * 1000 / Math.max(1, 22 * 60 - currentScenario.startMinutes);
+    const timer = window.setInterval(() => {
+      const current = stateRef.current;
+      if (document.hidden || current.pendingNpcTurns.length ||
+          document.querySelector('[role="dialog"], input:focus, textarea:focus')) return;
+      dispatch({type: 'CLOCK_MINUTE', runId: current.runId});
+    }, intervalMs);
+    return () => window.clearInterval(timer);
+  }, [hydrated, showOnboarding, confirmReset, confirmFinish, state.characterId]);
+
+  useEffect(() => {
     stateRef.current = state;
   }, [state]);
 
@@ -2685,6 +2700,7 @@ export function PhoneGame() {
               thay đổi theo những gì bạn làm. Mọi tài khoản, dữ liệu và tiền
               trong trải nghiệm này đều là mô phỏng; không nhập thông tin cá
               nhân, mật khẩu hoặc mã thật.
+              {' '}Đồng hồ tự chạy đến 22:00 rồi tổng kết. Thời gian tạm dừng khi bạn nhập liệu, chờ phản hồi hoặc rời trang.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="bg-slate-50">

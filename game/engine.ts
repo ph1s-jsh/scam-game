@@ -292,7 +292,8 @@ export function advanceStory(
     {
       ...state,
       tick: state.tick + 1,
-      elapsedMinutes: state.elapsedMinutes + elapsedMinutes,
+      // Actions affect story conditions, not the wall-clock pace.
+      elapsedMinutes: state.elapsedMinutes,
     },
     scenario,
   );
@@ -446,7 +447,7 @@ export function callIsAvailable(
 
 export function storyCanEnd(state: GameState, scenario: ScenarioDefinition) {
   return (
-    state.triggeredEventIds.includes(scenario.endingEventId) &&
+    scenario.startMinutes + state.elapsedMinutes >= 22 * 60 &&
     state.pendingNpcTurns.length === 0
   );
 }
@@ -1396,6 +1397,17 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             scenario,
             1,
           );
+
+    case 'CLOCK_MINUTE': {
+      if (action.runId !== state.runId || !['lock', 'phone'].includes(state.screen) || state.pendingNpcTurns.length) return state;
+      const elapsedMinutes = Math.min(state.elapsedMinutes + 1, 22 * 60 - scenario.startMinutes);
+      let next = { ...state, elapsedMinutes };
+      if (scenario.startMinutes + elapsedMinutes >= 22 * 60)
+        return { ...next, screen: 'debrief', activeThreadId: null, arrangementProposals: [], debrief: buildDebrief(next, scenario) };
+      if (scenario.startMinutes + elapsedMinutes === 21 * 60 + 45)
+        next = appendNotification(next, { id: `${state.runId}-bedtime`, app: 'messages', title: 'Buổi tối', body: 'Đã 21:45. Còn 15 phút trước khi khép lại buổi tối.', time: '21:45' });
+      return syncStoryEvents({ ...next, tick: next.tick + 1 }, scenario);
+    }
 
     case 'FINISH':
       if (!storyCanEnd(state, scenario)) return state;

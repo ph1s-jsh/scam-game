@@ -375,6 +375,7 @@ export interface GameState {
 }
 
 export type GameAction =
+  | { type: 'CLOCK_MINUTE'; runId: string }
   | { type: 'CONFIRM_ARRANGEMENT'; proposalId: string; runId: string }
   | { type: 'DISMISS_ARRANGEMENT'; proposalId: string; runId: string }
   | { type: 'START'; characterId: CharacterId; runId: string }
